@@ -11,12 +11,16 @@ use App\Models\SidebarWidget;
 use App\Models\RelatedLink;
 use App\Models\PublicDocument;
 use App\Models\Page;
+use App\Models\PageDocument;
+use App\Models\PageLink;
 use App\Models\ContactMessage;
 use App\Models\User;
 use App\Models\ActivityLog;
 use App\Models\MediaItem;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
+
 
 class AdminController extends Controller
 {
@@ -73,6 +77,7 @@ class AdminController extends Controller
 
     public function sliderUpdate(Request $request, $id)
     {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
         $slider = HeroSlider::findOrFail($id);
         
         $imageUrl = $request->image_url ?: $slider->image_url;
@@ -101,91 +106,424 @@ class AdminController extends Controller
         return back()->with('success', 'Banner Slider berhasil dihapus!');
     }
 
+    private function isSystemAuthMenu($menu)
+    {
+        if (!$menu) return true;
+        $url = strtolower(trim($menu->url ?? ''));
+        $title = strtoupper(trim($menu->title ?? ''));
+        return in_array($url, ['/login', '/admin', '/dashboard', '/logout']) || in_array($title, ['LOGIN', 'ADMIN', 'DASHBOARD']);
+    }
+
+    // --- 4. STRUKTUR NAVIGASI WEBSITE (TREE HIRARKI MENU & SUBMENU) ---
+    public function navigation()
+    {
+        $allMenus = NavigationMenu::whereNull('parent_id')->with('children')->orderBy('order', 'asc')->get();
+        $menus = $allMenus->reject(function($m) {
+            return $this->isSystemAuthMenu($m);
+        })->values();
+
+        foreach ($menus as $m) {
+            if ($m->children) {
+                $m->setRelation('children', $m->children->reject(function($c) {
+                    return $this->isSystemAuthMenu($c);
+                })->values());
+            }
+        }
+
+        $allParents = $menus;
+        return view('admin.navigation', compact('menus', 'allParents'));
+    }
+
+    public function navigationEdit($id)
+    {
+        $id = $this->sanitizeId($id);
+        $menuItem = NavigationMenu::findOrFail($id);
+        $allMenus = NavigationMenu::whereNull('parent_id')->with('children')->orderBy('order', 'asc')->get();
+        $menus = $allMenus->reject(function($m) {
+            return $this->isSystemAuthMenu($m);
+        })->values();
+
+        foreach ($menus as $m) {
+            if ($m->children) {
+                $m->setRelation('children', $m->children->reject(function($c) {
+                    return $this->isSystemAuthMenu($c);
+                })->values());
+            }
+        }
+
+        $allParents = $menus;
+        return view('admin.navigation', compact('menus', 'allParents', 'menuItem'));
+    }
+
+    public function navigationStore(Request $request)
+    {
+        $request->validate(['title' => 'required|string|max:255']);
+        
+        $rawUrl = $request->url;
+        if (is_array($rawUrl)) {
+            $rawUrl = end($rawUrl);
+        }
+        $url = trim(str_replace(['"', "'", '\\'], '', $rawUrl ?? ''));
+
+        if (empty($url)) {
+            $url = '#';
+        }
+
+        $type = $request->type ?? (preg_match('/^https?:\/\//i', $url) ? 'external' : 'internal');
+
+        // If URL points to /halaman/slug and type is internal, auto-create initial Page record if missing
+        if ($type === 'internal' && Str::contains($url, '/halaman/')) {
+            $slug = Str::after($url, '/halaman/');
+            if ($slug) {
+                Page::firstOrCreate(
+                    ['slug' => $slug],
+                    ['title' => $request->title, 'content' => '', 'is_published' => true]
+                );
+            }
+        }
+
+        NavigationMenu::create([
+            'title' => $request->title,
+            'url' => $url,
+            'type' => $type,
+            'parent_id' => $request->parent_id ?: null,
+            'order' => $request->order ?? 0,
+            'target' => $request->target ?? '_self',
+            'is_active' => $request->has('is_active'),
+        ]);
+
+        return redirect()->route('admin.navigation')->with('success', 'Struktur Menu Navigasi berhasil ditambahkan!');
+    }
+
+    public function navigationUpdate(Request $request, $id)
+    {
+        $id = $this->sanitizeId($id);
+        $menu = NavigationMenu::findOrFail($id);
+        $request->validate(['title' => 'required|string|max:255']);
+
+        $rawUrl = $request->url;
+        if (is_array($rawUrl)) {
+            $rawUrl = end($rawUrl);
+        }
+        $url = trim(str_replace(['"', "'", '\\'], '', $rawUrl ?? ''));
+        $url = !empty($rawUrl) ? $rawUrl : $menu->url;
+
+        $type = $request->type ?? (preg_match('/^https?:\/\//i', $url) ? 'external' : ($menu->type ?? 'internal'));
+
+        // If URL points to /halaman/slug and type is internal, auto-create initial Page record if missing
+        if ($type === 'internal' && Str::contains($url, '/halaman/')) {
+            $slug = Str::after($url, '/halaman/');
+            if ($slug) {
+                Page::firstOrCreate(
+                    ['slug' => $slug],
+                    ['title' => $request->title, 'content' => '', 'is_published' => true]
+                );
+            }
+        }
+
+        $menu->update([
+            'title' => $request->title,
+            'url' => $url,
+            'type' => $type,
+            'parent_id' => $request->parent_id ?: null,
+            'order' => $request->order ?? 0,
+            'target' => $request->target ?? '_self',
+            'is_active' => $request->has('is_active'),
+        ]);
+
+        return redirect()->route('admin.navigation')->with('success', 'Struktur Menu Navigasi berhasil diperbarui!');
+    }
+
+    public function navigationDestroy($id)
+    {
+        $id = $this->sanitizeId($id);
+        $menu = NavigationMenu::findOrFail($id);
+        
+        // Delete submenus if parent is deleted
+        NavigationMenu::where('parent_id', $menu->id)->delete();
+        $menu->delete();
+
+        return redirect()->route('admin.navigation')->with('success', 'Struktur Menu Navigasi berhasil dihapus!');
+    }
+
     public function menus()
     {
-        $menus = NavigationMenu::whereNull('parent_id')->with('children')->orderBy('order', 'asc')->get();
-        $allParents = NavigationMenu::whereNull('parent_id')->orderBy('order', 'asc')->get();
-        $pages = Page::orderBy('title', 'asc')->get();
+        $allMenus = NavigationMenu::whereNull('parent_id')->with('children')->orderBy('order', 'asc')->get();
+        
+        $menus = $allMenus->reject(function($m) {
+            return $this->isSystemAuthMenu($m);
+        })->values();
+
+        $pages = Page::with(['documents', 'links'])->orderBy('title', 'asc')->get();
         $pagesMap = $pages->keyBy('slug');
 
         $attachPageContent = function($menu) use ($pagesMap) {
             $menu->page_content = '';
             $menu->image_url = '';
-            if ($menu->url && Str::contains($menu->url, '/halaman/')) {
-                $slug = Str::after($menu->url, '/halaman/');
-                if (isset($pagesMap[$slug])) {
-                    $menu->page_content = $pagesMap[$slug]->content;
-                    $menu->image_url = $pagesMap[$slug]->image_url;
-                } else {
-                    $pageMatch = Page::where('slug', 'like', '%' . Str::slug($slug) . '%')->first();
-                    if ($pageMatch) {
-                        $menu->page_content = $pageMatch->content;
-                        $menu->image_url = $pageMatch->image_url;
-                    }
+            $menu->page_id = null;
+            $menu->documents = [];
+            $menu->links = [];
+            $menu->is_external = false;
+            $menu->is_editable_page = false;
+
+            $url = trim($menu->url ?? '');
+            
+            // External link check (type === 'external' or http:// or https://)
+            if ($menu->type === 'external' || preg_match('/^https?:\/\//i', $url)) {
+                $menu->is_external = true;
+                $menu->type = 'external';
+                return;
+            }
+
+            $menu->type = 'internal';
+
+            // Anchor check
+            if ($url === '#' || empty($url)) {
+                return;
+            }
+
+            // Internal CMS page check
+            $menu->is_editable_page = true;
+            
+            // Determine slug for finding Page record
+            $slug = null;
+            if (Str::contains($url, '/halaman/')) {
+                $slug = Str::after($url, '/halaman/');
+            } elseif ($url === '/') {
+                $slug = 'home';
+            } else {
+                $slug = Str::slug(ltrim($url, '/'));
+                if (empty($slug)) {
+                    $slug = Str::slug($menu->title);
                 }
+            }
+
+            // Match existing page by slug or title
+            $page = null;
+            if (isset($pagesMap[$slug])) {
+                $page = $pagesMap[$slug];
+            } else {
+                $page = Page::with(['documents', 'links'])->where('slug', $slug)
+                    ->orWhere('slug', 'like', '%' . $slug . '%')
+                    ->orWhere('title', 'like', '%' . $menu->title . '%')
+                    ->first();
+            }
+
+            // If page exists, attach content & image details & page_id & documents & links
+            if ($page) {
+                $menu->page_id = $page->id;
+                $menu->page_content = $page->content;
+                $menu->image_url = $page->image_url;
+                $menu->image_name = $page->image_name;
+                $menu->image_size = $page->image_size;
+                $menu->documents = $page->documents;
+                $menu->links = $page->links;
+            } else {
+                // First or create initial page record for seamless editing
+                $newPage = Page::create([
+                    'title' => $menu->title,
+                    'slug' => $slug,
+                    'content' => '',
+                    'is_published' => true
+                ]);
+                $newPage->load(['documents', 'links']);
+                $menu->page_id = $newPage->id;
+                $menu->page_content = $newPage->content;
+                $menu->image_url = $newPage->image_url;
+                $menu->image_name = $newPage->image_name;
+                $menu->image_size = $newPage->image_size;
+                $menu->documents = $newPage->documents;
+                $menu->links = $newPage->links;
             }
         };
 
         foreach ($menus as $menu) {
+            $menu->is_parent_container = ($menu->url === '#' || ($menu->children && count($menu->children) > 0));
             $attachPageContent($menu);
+            
             if ($menu->children) {
-                foreach ($menu->children as $child) {
+                $filteredChildren = $menu->children->reject(function($c) {
+                    return $this->isSystemAuthMenu($c);
+                })->values();
+
+                foreach ($filteredChildren as $child) {
                     $attachPageContent($child);
                 }
+                $menu->setRelation('children', $filteredChildren);
             }
         }
 
-        return view('admin.menus', compact('menus', 'allParents', 'pages'));
+        return view('admin.menus', compact('menus', 'pages'));
     }
 
     private function formatPageContent($content)
     {
         if (empty($content)) return '';
-        if (Str::contains($content, ['<h1', '<h2', '<h3', '<div', '<ul', '<ol'])) {
-            return $content;
+
+        $cleaned = $content;
+
+        // Clean up any old double-escaped HTML entities (e.g. &lt;p&gt;) from previous corrupt saves
+        if (Str::contains($cleaned, ['&lt;p&gt;', '&lt;h', '&lt;div&gt;', '&lt;ul&gt;', '&lt;table&gt;', '&lt;img', '&lt;strong'])) {
+            $cleaned = htmlspecialchars_decode($cleaned, ENT_QUOTES);
         }
 
-        // Auto split numbered items if merged (e.g. 1. 2. 3.)
-        $content = preg_replace('/(\d+[\.\)])\s*/', "\n$1 ", $content);
-        $content = str_replace(["Fungsi BPBD", "Tugas Pokok BPBD", "Tugas dan Fungsi"], ["\nFungsi BPBD\n", "\nTugas Pokok BPBD\n", "\nTugas dan Fungsi\n"], $content);
+        // Regex callback to sanitize all href attributes (tel:, mailto:, http:, https:)
+        $cleaned = preg_replace_callback('/href=["\']([^"\']+)["\']/i', function ($matches) {
+            $url = trim($matches[1]);
+            
+            // Clean leading slashes and quotes before protocol (e.g. /"tel: or /tel: -> tel:)
+            $url = preg_replace('/^\/+(["\']?)(tel|mailto|https?):/i', '$2:', $url);
+            $url = preg_replace('/^["\']?(tel|mailto|https?):/i', '$1:', $url);
+            
+            // Clean tel: URLs (strip trailing slashes, quotes, spaces)
+            if (preg_match('/^tel:/i', $url)) {
+                $url = preg_replace('/\/+$/', '', $url);
+                $url = trim($url, '"\'');
+            }
+            
+            // Clean mailto: URLs
+            if (preg_match('/^mailto:/i', $url)) {
+                $url = preg_replace('/\/+$/', '', $url);
+                $url = trim($url, '"\'');
+            }
 
-        $lines = explode("\n", str_replace(["\r\n", "\r"], "\n", trim($content)));
+            // Clean http / https URLs
+            if (preg_match('/^https?:\/\//i', $url)) {
+                $url = trim($url, '"\'');
+            }
+
+            return 'href="' . $url . '"';
+        }, $cleaned);
+
+        // Strip unwanted internal CKEditor classes if present, preserving user HTML tags & attributes
+        $cleaned = preg_replace('/\s*class=["\'](?:ck-[^\'\"]*|\s*)*["\']/i', '', $cleaned);
+
+        // If content contains HTML tags (e.g. from CKEditor or raw HTML), preserve raw HTML directly
+        if (preg_match('/<[a-z0-9]+/i', $cleaned)) {
+            return trim($cleaned);
+        }
+
+        // Fallback for plain text input: wrap lines in <p> without double encoding
+        $lines = explode("\n", str_replace(["\r\n", "\r"], "\n", trim($cleaned)));
         $formatted = [];
-
         foreach ($lines as $line) {
             $line = trim($line);
             if (empty($line)) continue;
-
-            if (preg_match('/^(visi|v i s i)$/i', $line)) {
-                $formatted[] = '<h2 class="text-xl font-bold tracking-[0.25em] text-[#23325c] mb-4 mt-4">V I S I</h2>';
-            } elseif (preg_match('/^(misi|m i s i)$/i', $line)) {
-                $formatted[] = '<h2 class="text-xl font-bold tracking-[0.25em] text-[#23325c] mb-6 mt-8">M I S I</h2>';
-            } elseif (preg_match('/^(tugas|tugas pokok|tugas pokok bpbd)$/i', $line)) {
-                $formatted[] = '<h2 class="text-xl font-bold tracking-[0.25em] text-[#23325c] mb-4 mt-6">T U G A S</h2>';
-            } elseif (preg_match('/^(fungsi|fungsi bpbd)$/i', $line)) {
-                $formatted[] = '<h2 class="text-xl font-bold tracking-[0.25em] text-[#23325c] mb-4 mt-8">F U N G S I</h2>';
-            } else {
-                $formatted[] = '<p class="mb-3 leading-relaxed text-slate-700">' . e($line) . '</p>';
-            }
+            $formatted[] = '<p>' . $line . '</p>';
         }
 
         return implode("\n", $formatted);
     }
 
+    private function validateAndStorePageImage(Request $request, $fieldName = 'image_file')
+    {
+        if (!$request->hasFile($fieldName)) {
+            return null;
+        }
+
+        $file = $request->file($fieldName);
+
+        if (!$file->isValid()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                $fieldName => 'File yang diunggah tidak valid atau mengalami kerusakan.'
+            ]);
+        }
+
+        $extension = strtolower($file->getClientOriginalExtension());
+        $mimeType = strtolower($file->getMimeType());
+
+        $allowedExtensions = ['jpg', 'jpeg', 'png'];
+        $allowedMimetypes = ['image/jpeg', 'image/png', 'image/pjpeg', 'image/x-png'];
+
+        if (!in_array($extension, $allowedExtensions) || !in_array($mimeType, $allowedMimetypes)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                $fieldName => 'Format file tidak valid. Upload hanya JPG, JPEG, atau PNG.'
+            ]);
+        }
+
+        if ($file->getSize() > 5 * 1024 * 1024) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                $fieldName => 'Ukuran file gambar tidak boleh melebihi 5 MB.'
+            ]);
+        }
+
+        $originalName = $file->getClientOriginalName();
+        $safeFileName = time() . '_' . Str::slug(pathinfo($originalName, PATHINFO_FILENAME)) . '.' . $extension;
+
+        $imagePath = $file->storeAs('images/pages', $safeFileName, 'public');
+
+        return [
+            'image_url' => asset('storage/' . $imagePath),
+            'image_path' => $imagePath,
+            'image_name' => $originalName,
+            'image_type' => $mimeType,
+            'image_size' => $file->getSize(),
+        ];
+    }
+
+    private function validateAndStorePageDocument(Request $request, $pageId, $fieldName = 'document_file')
+    {
+        if (!$request->hasFile($fieldName)) {
+            return null;
+        }
+
+        $file = $request->file($fieldName);
+
+        if (!$file->isValid()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                $fieldName => 'File dokumen yang diunggah tidak valid atau mengalami kerusakan.'
+            ]);
+        }
+
+        $extension = strtolower($file->getClientOriginalExtension());
+        $mimeType = strtolower($file->getMimeType());
+
+        $allowedExtensions = ['pdf'];
+        $allowedMimetypes = ['application/pdf', 'application/x-pdf', 'application/acrobat', 'applications/vnd.pdf', 'text/pdf', 'text/x-pdf'];
+
+        if (!in_array($extension, $allowedExtensions) || !in_array($mimeType, $allowedMimetypes)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                $fieldName => 'Format dokumen tidak valid. Hanya file PDF yang diperbolehkan.'
+            ]);
+        }
+
+        if ($file->getSize() > 10 * 1024 * 1024) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                $fieldName => 'Ukuran file terlalu besar. Maksimal 10 MB.'
+            ]);
+        }
+
+        $originalName = $file->getClientOriginalName();
+        $safeFileName = time() . '_' . Str::slug(pathinfo($originalName, PATHINFO_FILENAME)) . '.pdf';
+
+        $filePath = $file->storeAs('documents', $safeFileName, 'public');
+
+        return PageDocument::create([
+            'page_id' => $pageId,
+            'file_name' => $originalName,
+            'file_path' => $filePath,
+            'file_type' => 'application/pdf',
+            'file_size' => $file->getSize(),
+        ]);
+    }
+
+
     public function menuStore(Request $request)
     {
-        $request->validate(['title' => 'required|string|max:255']);
+        $request->validate([
+            'title' => 'required|string|max:255',
+        ]);
+
+        $imageData = $this->validateAndStorePageImage($request, 'image_file');
         
-        $url = trim($request->url ?? '');
+        $rawUrl = $request->url;
+        if (is_array($rawUrl)) {
+            $rawUrl = end($rawUrl);
+        }
+        $url = trim(str_replace(['"', "'", '\\'], '', $rawUrl ?? ''));
 
         // Process image URL or Uploaded file
-        $imageUrl = $request->image_url;
-        if ($request->hasFile('image_file')) {
-            $file = $request->file('image_file');
-            $filename = 'page_' . time() . '_' . Str::random(5) . '.' . $file->getClientOriginalExtension();
-            $file->move(public_path('uploads/pages'), $filename);
-            $imageUrl = url('uploads/pages/' . $filename);
-        }
+        $imageUrl = $imageData ? $imageData['image_url'] : $request->image_url;
 
         // Determine slug from URL or title
         $slug = null;
@@ -196,21 +534,27 @@ class AdminController extends Controller
             $slug = Str::slug($request->title);
         }
 
-        // If page_content or image_url is provided, automatically create/update Page record
-        if ($request->filled('page_content') || !empty($imageUrl)) {
+        // If page_content or image_url or document_file is provided, automatically create/update Page record
+        if ($request->filled('page_content') || !empty($imageUrl) || $request->hasFile('document_file')) {
             $formattedContent = $this->formatPageContent($request->page_content);
             
             $pageData = ['title' => $request->title];
             if ($request->filled('page_content')) {
                 $pageData['content'] = $formattedContent;
             }
-            if (!empty($imageUrl)) {
+            if ($imageData) {
+                $pageData = array_merge($pageData, $imageData);
+            } elseif (!empty($imageUrl)) {
                 $pageData['image_url'] = $imageUrl;
             }
 
-            Page::updateOrCreate(['slug' => $slug], $pageData);
+            $page = Page::updateOrCreate(['slug' => $slug], $pageData);
 
-            if (empty($url)) {
+            if ($request->hasFile('document_file')) {
+                $this->validateAndStorePageDocument($request, $page->id, 'document_file');
+            }
+
+            if (empty($url) || Str::contains($url, 'tel:')) {
                 $url = '/halaman/' . $slug;
             }
         }
@@ -232,20 +576,54 @@ class AdminController extends Controller
 
     public function menuUpdate(Request $request, $id)
     {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
         $menu = NavigationMenu::findOrFail($id);
-        $request->validate(['title' => 'required|string|max:255']);
 
-        // Always prioritize explicitly requested URL, or fallback to current menu URL
-        $url = $request->filled('url') ? trim($request->url) : $menu->url;
+        $request->validate([
+            'title' => 'required|string|max:255',
+        ]);
+
+        $imageData = $this->validateAndStorePageImage($request, 'image_file');
+
+        $rawUrl = $request->url;
+        if (is_array($rawUrl)) {
+            $rawUrl = end($rawUrl);
+        }
+        $rawUrl = trim(str_replace(['"', "'", '\\'], '', $rawUrl ?? ''));
+        $url = !empty($rawUrl) ? $rawUrl : $menu->url;
+        $type = $request->type ?? ($menu->type ?? (preg_match('/^https?:\/\//i', $url) ? 'external' : 'internal'));
+        if (preg_match('/^https?:\/\//i', $url)) {
+            $type = 'external';
+        }
+
+        // If menu is external link type, update navigation_menu directly without forcing /halaman/ or creating Page records
+        if ($type === 'external') {
+            $isActive = $menu->is_active;
+            if ($request->has('is_active')) {
+                $isActive = $request->boolean('is_active');
+            } elseif ($request->has('status')) {
+                $isActive = ($request->status === 'aktif' || $request->status == '1');
+            }
+
+            $menu->update([
+                'title' => $request->title,
+                'url' => $url,
+                'type' => 'external',
+                'target' => $request->target ?? '_blank',
+                'is_active' => $isActive,
+            ]);
+
+            return back()->with('success', 'Konten Tautan Eksternal berhasil diperbarui!');
+        }
+
+        // If existing menu points to a page (/halaman/...), protect route from invalid/tel links
+        if ($menu->url && Str::contains($menu->url, '/halaman/') && (empty($url) || Str::contains($url, 'tel:') || $url === '#')) {
+            $existingSlug = Str::after($menu->url, '/halaman/');
+            $url = '/halaman/' . $existingSlug;
+        }
 
         // Process image URL or Uploaded file
-        $imageUrl = $request->image_url;
-        if ($request->hasFile('image_file')) {
-            $file = $request->file('image_file');
-            $filename = 'page_' . time() . '_' . Str::random(5) . '.' . $file->getClientOriginalExtension();
-            $file->move(public_path('uploads/pages'), $filename);
-            $imageUrl = url('uploads/pages/' . $filename);
-        }
+        $imageUrl = $imageData ? $imageData['image_url'] : $request->image_url;
 
         // Detect existing page slug from current/requested URL or title
         $targetUrl = $url ?: $menu->url;
@@ -257,15 +635,17 @@ class AdminController extends Controller
             $slug = Str::slug($request->title);
         }
 
-        // If page_content or image_url is provided, create/update Page record
-        if ($request->filled('page_content') || !empty($imageUrl)) {
+        // If page_content or image_url or document_file is provided, create/update Page record
+        if ($request->filled('page_content') || !empty($imageUrl) || $request->hasFile('document_file')) {
             $formattedContent = $this->formatPageContent($request->page_content);
 
             $pageData = ['title' => $request->title];
             if ($request->filled('page_content')) {
                 $pageData['content'] = $formattedContent;
             }
-            if (!empty($imageUrl)) {
+            if ($imageData) {
+                $pageData = array_merge($pageData, $imageData);
+            } elseif (!empty($imageUrl)) {
                 $pageData['image_url'] = $imageUrl;
             }
 
@@ -279,9 +659,16 @@ class AdminController extends Controller
                 $page->update($pageData);
             } else {
                 $pageData['slug'] = $slug;
-                Page::create($pageData);
+                $page = Page::create($pageData);
+            }
+
+            if ($request->hasFile('document_file')) {
+                $this->validateAndStorePageDocument($request, $page->id, 'document_file');
             }
         }
+
+
+
 
         if (empty($url)) {
             $url = '#';
@@ -323,21 +710,27 @@ class AdminController extends Controller
             $imageUrl = url('uploads/news/' . $filename);
         }
 
+        $formattedContent = $this->formatPageContent($request->content);
+
         NewsItem::create([
             'title' => $request->title,
             'slug' => Str::slug($request->title) . '-' . time(),
-            'summary' => $request->summary ?? Str::limit(strip_tags($request->content), 120),
-            'content' => $request->content,
+            'summary' => $request->summary ?? Str::limit(strip_tags($formattedContent), 120),
+            'content' => $formattedContent,
             'image_url' => $imageUrl,
             'link_url' => $request->link_url,
             'category' => $request->category ?? 'Peringatan Dini',
             'published_at' => $request->published_at ?? now(),
         ]);
+
+        ActivityLog::record('Tambah Berita', 'Mempublikasikan berita baru: ' . $request->title);
+
         return back()->with('success', 'Berita berhasil dipublikasikan!');
     }
 
     public function newsUpdate(Request $request, $id)
     {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
         $news = NewsItem::findOrFail($id);
         
         $imageUrl = $request->image_url ?: $news->image_url;
@@ -348,21 +741,31 @@ class AdminController extends Controller
             $imageUrl = url('uploads/news/' . $filename);
         }
 
+        $formattedContent = $this->formatPageContent($request->content);
+
         $news->update([
             'title' => $request->title,
-            'summary' => $request->summary ?? Str::limit(strip_tags($request->content), 120),
-            'content' => $request->content,
+            'summary' => $request->summary ?? Str::limit(strip_tags($formattedContent), 120),
+            'content' => $formattedContent,
             'image_url' => $imageUrl,
             'link_url' => $request->link_url,
             'category' => $request->category,
             'published_at' => $request->published_at,
         ]);
+
+        ActivityLog::record('Edit Berita', 'Mengedit data berita: ' . $request->title);
+
         return back()->with('success', 'Berita berhasil diperbarui!');
     }
 
     public function newsDestroy($id)
     {
-        NewsItem::findOrFail($id)->delete();
+        $news = NewsItem::findOrFail($id);
+        $title = $news->title;
+        $news->delete();
+
+        ActivityLog::record('Hapus Berita', 'Menghapus berita: ' . $title);
+
         return back()->with('success', 'Berita berhasil dihapus!');
     }
 
@@ -402,11 +805,15 @@ class AdminController extends Controller
             'description' => $request->description,
             'file_url' => $fileUrl,
         ]);
+
+        ActivityLog::record('Upload Dokumen', 'Mengunggah dokumen kinerja baru: ' . $request->title);
+
         return back()->with('success', 'Dokumen berhasil ditambahkan!');
     }
 
     public function documentUpdate(Request $request, $id)
     {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
         $doc = PublicDocument::findOrFail($id);
         
         $fileUrl = $request->file_url ?: $doc->file_url;
@@ -434,49 +841,211 @@ class AdminController extends Controller
             'description' => $request->description,
             'file_url' => $fileUrl,
         ]);
+
+        ActivityLog::record('Edit Dokumen', 'Mengubah dokumen kinerja: ' . $request->title);
+
         return back()->with('success', 'Dokumen berhasil diperbarui!');
     }
 
     public function documentDestroy($id)
     {
-        PublicDocument::findOrFail($id)->delete();
+        $doc = PublicDocument::findOrFail($id);
+        $title = $doc->title;
+        $doc->delete();
+
+        ActivityLog::record('Hapus Dokumen', 'Menghapus dokumen kinerja: ' . $title);
+
         return back()->with('success', 'Dokumen berhasil dihapus!');
     }
 
-    // --- 5. PAGES CRUD ---
+    // --- 5. PAGES & PAGE DOCUMENTS CRUD ---
     public function pages()
     {
-        $pages = Page::orderBy('updated_at', 'desc')->get();
+        $pages = Page::with('documents')->orderBy('updated_at', 'desc')->get();
         return view('admin.pages', compact('pages'));
     }
 
     public function pageStore(Request $request)
     {
         $request->validate(['title' => 'required|string|max:255', 'content' => 'required|string']);
-        Page::create([
+        $imageData = $this->validateAndStorePageImage($request, 'image_file');
+
+        $data = [
             'title' => $request->title,
             'slug' => Str::slug($request->title),
             'content' => $request->content,
             'is_published' => true,
-        ]);
+        ];
+        if ($imageData) {
+            $data = array_merge($data, $imageData);
+        }
+
+        Page::create($data);
         return back()->with('success', 'Halaman berhasil dibuat!');
     }
 
     public function pageUpdate(Request $request, $id)
     {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
         $page = Page::findOrFail($id);
-        $page->update([
+        $request->validate(['title' => 'required|string|max:255', 'content' => 'required|string']);
+
+        $imageData = $this->validateAndStorePageImage($request, 'image_file');
+
+        $data = [
             'title' => $request->title,
             'content' => $request->content,
-        ]);
+        ];
+        if ($imageData) {
+            $data = array_merge($data, $imageData);
+        }
+
+        $page->update($data);
         return back()->with('success', 'Halaman berhasil diperbarui!');
     }
+
 
     public function pageDestroy($id)
     {
         Page::findOrFail($id)->delete();
         return back()->with('success', 'Halaman berhasil dihapus!');
     }
+
+    public function pageImageDestroy($id)
+    {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
+        $page = Page::findOrFail($id);
+
+        if (!empty($page->image_path) && Storage::disk('public')->exists($page->image_path)) {
+            Storage::disk('public')->delete($page->image_path);
+        }
+
+        $page->update([
+            'image_url' => null,
+            'image_path' => null,
+            'image_name' => null,
+            'image_type' => null,
+            'image_size' => null,
+        ]);
+
+        return back()->with('success', 'Gambar headline halaman berhasil dihapus!');
+    }
+
+
+    public function pageDocumentStore(Request $request, $pageId)
+    {
+        $pageId = trim(str_replace(['"', "'", '\\'], '', $pageId));
+        $page = Page::findOrFail($pageId);
+
+        $this->validateAndStorePageDocument($request, $page->id, 'document_file');
+
+        return back()->with('success', 'Dokumen PDF pendukung berhasil diunggah!');
+    }
+
+
+    public function pageDocumentDestroy($id)
+    {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
+        $document = PageDocument::findOrFail($id);
+
+        if (Storage::disk('public')->exists($document->file_path)) {
+            Storage::disk('public')->delete($document->file_path);
+        }
+
+        $document->delete();
+
+        return back()->with('success', 'Dokumen PDF pendukung berhasil dihapus!');
+    }
+
+    private function isValidPageUrl($url)
+    {
+        if (empty($url)) {
+            return false;
+        }
+        $url = trim($url);
+        
+        // Reject javascript:, file:, data:, or any protocol other than http:// or https://
+        if (preg_match('/^(javascript|file|data):/i', $url)) {
+            return false;
+        }
+        
+        // Must start with http:// or https://
+        if (!preg_match('/^https?:\/\//i', $url)) {
+            return false;
+        }
+        
+        // Validate URL format
+        if (filter_var($url, FILTER_VALIDATE_URL) === false) {
+            return false;
+        }
+        
+        return true;
+    }
+
+    public function pageLinkStore(Request $request, $pageId)
+    {
+        $pageId = trim(str_replace(['"', "'", '\\'], '', $pageId));
+        $page = Page::findOrFail($pageId);
+
+        $request->validate([
+            'title' => 'required|string|max:255',
+            'url' => 'required|string',
+            'target' => 'nullable|in:_blank,_self',
+            'status' => 'nullable|in:aktif,nonaktif',
+        ]);
+
+        if (!$this->isValidPageUrl($request->url)) {
+            return back()->with('error', 'Format URL tidak valid.')->withErrors(['url' => 'Format URL tidak valid.'])->withInput();
+        }
+
+        PageLink::create([
+            'page_id' => $page->id,
+            'title' => $request->title,
+            'url' => trim($request->url),
+            'description' => $request->description,
+            'target' => $request->target ?? '_blank',
+            'status' => $request->status ?? 'aktif',
+        ]);
+
+        return back()->with('success', 'Link URL halaman berhasil ditambahkan!');
+    }
+
+    public function pageLinkUpdate(Request $request, $id)
+    {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
+        $link = PageLink::findOrFail($id);
+
+        $request->validate([
+            'title' => 'required|string|max:255',
+            'url' => 'required|string',
+            'target' => 'nullable|in:_blank,_self',
+            'status' => 'nullable|in:aktif,nonaktif',
+        ]);
+
+        if (!$this->isValidPageUrl($request->url)) {
+            return back()->with('error', 'Format URL tidak valid.')->withErrors(['url' => 'Format URL tidak valid.'])->withInput();
+        }
+
+        $link->update([
+            'title' => $request->title,
+            'url' => trim($request->url),
+            'description' => $request->description,
+            'target' => $request->target ?? '_blank',
+            'status' => $request->status ?? 'aktif',
+        ]);
+
+        return back()->with('success', 'Link URL halaman berhasil diperbarui!');
+    }
+
+    public function pageLinkDestroy($id)
+    {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
+        $link = PageLink::findOrFail($id);
+        $link->delete();
+
+        return back()->with('success', 'Link URL halaman berhasil dihapus!');
+    }
+
 
     // --- 6. SIDEBAR WIDGETS CRUD ---
     public function widgets()
@@ -509,6 +1078,7 @@ class AdminController extends Controller
 
     public function widgetUpdate(Request $request, $id)
     {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
         $widget = SidebarWidget::findOrFail($id);
         
         $imageUrl = $request->image_url ?: $widget->image_url;
@@ -566,6 +1136,7 @@ class AdminController extends Controller
 
     public function linkUpdate(Request $request, $id)
     {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
         $link = RelatedLink::findOrFail($id);
         
         $imageUrl = $request->image_url ?: $link->image_url;
@@ -645,6 +1216,7 @@ class AdminController extends Controller
 
     public function mediaUpdate(Request $request, $id)
     {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
         $media = MediaItem::findOrFail($id);
         $request->validate(['title' => 'required|string|max:255']);
 
@@ -732,6 +1304,7 @@ class AdminController extends Controller
 
     public function userUpdate(Request $request, $id)
     {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
         $user = User::findOrFail($id);
         $data = [
             'name' => $request->name,
@@ -772,6 +1345,20 @@ class AdminController extends Controller
 
     public function settingsUpdate(Request $request)
     {
+        if ($request->filled('hero_sp4n_url')) {
+            $url = trim($request->hero_sp4n_url);
+            if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                return back()->withErrors(['hero_sp4n_url' => 'Format URL SP4N Lapor tidak valid. Contoh: https://www.lapor.go.id/'])->withInput();
+            }
+        }
+
+        if ($request->filled('hero_contact_url')) {
+            $url = trim($request->hero_contact_url);
+            if (!filter_var($url, FILTER_VALIDATE_URL) && !Str::contains($url, ['wa.me', 'tel:', 'whatsapp'])) {
+                return back()->withErrors(['hero_contact_url' => 'Format URL Hubungi Kami / WhatsApp tidak valid. Contoh: https://wa.me/628123456789'])->withInput();
+            }
+        }
+
         $fileKeys = [
             'logo_frontend_file' => 'logo_frontend',
             'logo_backend_file' => 'logo_backend',
@@ -790,7 +1377,56 @@ class AdminController extends Controller
             }
         }
 
-        $inputs = $request->except(array_merge(['_token'], array_keys($fileKeys), $uploadedKeys));
+        // Handle SKM QR Code upload with strict validation
+        if ($request->hasFile('qr_code_file')) {
+            $file = $request->file('qr_code_file');
+
+            if (!$file->isValid()) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'qr_code_file' => 'File QR Code yang diunggah tidak valid atau mengalami kerusakan.'
+                ]);
+            }
+
+            $extension = strtolower($file->getClientOriginalExtension());
+            $mimeType = strtolower($file->getMimeType());
+
+            $allowedExtensions = ['png', 'jpg', 'jpeg'];
+            $allowedMimetypes = ['image/png', 'image/jpeg', 'image/pjpeg', 'image/x-png'];
+
+            if (!in_array($extension, $allowedExtensions) || !in_array($mimeType, $allowedMimetypes)) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'qr_code_file' => 'Format QR Code tidak valid. Upload hanya PNG/JPG/JPEG.'
+                ]);
+            }
+
+            if ($file->getSize() > 5 * 1024 * 1024) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'qr_code_file' => 'Ukuran file QR Code tidak boleh melebihi 5 MB.'
+                ]);
+            }
+
+            // Remove old QR code file if present in storage
+            $oldPath = SiteSetting::get('qr_image_path');
+            if ($oldPath && Storage::disk('public')->exists($oldPath)) {
+                Storage::disk('public')->delete($oldPath);
+            }
+
+            $originalName = $file->getClientOriginalName();
+            $safeFileName = time() . '_' . Str::slug(pathinfo($originalName, PATHINFO_FILENAME)) . '.' . $extension;
+            $qrPath = $file->storeAs('images/qrcode', $safeFileName, 'public');
+
+            SiteSetting::set('qr_image_path', $qrPath);
+            SiteSetting::set('qr_image_name', $originalName);
+            SiteSetting::set('qr_image_size', $file->getSize());
+            SiteSetting::set('qr_code_survey', asset('storage/' . $qrPath));
+
+            $uploadedKeys[] = 'qr_code_survey';
+            $uploadedKeys[] = 'qr_image_path';
+            $uploadedKeys[] = 'qr_image_name';
+            $uploadedKeys[] = 'qr_image_size';
+        }
+
+        $inputs = $request->except(array_merge(['_token', 'qr_code_file'], array_keys($fileKeys), $uploadedKeys));
 
         foreach ($inputs as $key => $value) {
             if ($value !== null && $value !== '') {
@@ -800,7 +1436,7 @@ class AdminController extends Controller
 
         ActivityLog::record('Update Pengaturan', 'Memperbarui konfigurasi utama website dan identitas instansi.');
 
-        return back()->with('success', 'Pengaturan Website & Logo berhasil disimpan!');
+        return back()->with('success', 'Pengaturan Website, Logo & QR Code SKM berhasil disimpan!');
     }
 
     // --- 11. ACTIVITY LOGS (LOG AKTIVITAS) ---
@@ -846,9 +1482,225 @@ class AdminController extends Controller
 
     public function logDestroy($id)
     {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
         $log = ActivityLog::findOrFail($id);
         $log->delete();
 
         return back()->with('success', 'Catatan log berhasil dihapus!');
+    }
+
+    public function stafLogs(Request $request)
+    {
+        $staffRoles = ['staf', 'staff', 'anggota'];
+
+        $query = ActivityLog::whereIn('user_role', $staffRoles)
+            ->orWhere(function($q) use ($staffRoles) {
+                $q->whereNotIn('user_role', ['super_admin', 'admin', 'administrator'])
+                  ->where('user_role', '!=', 'super_admin');
+            })
+            ->orderBy('created_at', 'desc');
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('user_name', 'like', "%{$search}%")
+                  ->orWhere('action', 'like', "%{$search}%")
+                  ->orWhere('description', 'like', "%{$search}%")
+                  ->orWhere('ip_address', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('action')) {
+            $query->where('action', $request->action);
+        }
+
+        $logs = $query->paginate(15)->withQueryString();
+
+        $stats = [
+            'total_logs' => ActivityLog::whereIn('user_role', $staffRoles)->count(),
+            'today_logs' => ActivityLog::whereIn('user_role', $staffRoles)->whereDate('created_at', now()->today())->count(),
+            'unique_staf' => ActivityLog::whereIn('user_role', $staffRoles)->whereNotNull('user_id')->distinct('user_id')->count('user_id'),
+            'last_activity' => ActivityLog::whereIn('user_role', $staffRoles)->latest()->first(),
+        ];
+
+        $actionTypes = ActivityLog::whereIn('user_role', $staffRoles)->select('action')->distinct()->pluck('action');
+
+        return view('admin.staf_logs', compact('logs', 'stats', 'actionTypes'));
+    }
+
+    // --- EDIT METHODS & PARAMETER SANITIZATION ---
+    private function sanitizeId($id)
+    {
+        return trim(str_replace(['"', "'", '\\'], '', $id));
+    }
+
+    public function documentEdit($id)
+    {
+        $id = $this->sanitizeId($id);
+        $doc = PublicDocument::findOrFail($id);
+        $documents = PublicDocument::latest()->get();
+        return view('admin.documents', compact('documents', 'doc'));
+    }
+
+    public function newsEdit($id)
+    {
+        $id = $this->sanitizeId($id);
+        $newsItem = NewsItem::findOrFail($id);
+        $newsList = NewsItem::latest()->paginate(10);
+        return view('admin.news', compact('newsList', 'newsItem'));
+    }
+
+    public function sliderEdit($id)
+    {
+        $id = $this->sanitizeId($id);
+        $sliderItem = HeroSlider::findOrFail($id);
+        $sliders = HeroSlider::orderBy('order', 'asc')->get();
+        return view('admin.sliders', compact('sliders', 'sliderItem'));
+    }
+
+    public function menuEdit($id)
+    {
+        $id = $this->sanitizeId($id);
+        $menuItem = NavigationMenu::findOrFail($id);
+        
+        $pages = Page::with(['documents', 'links'])->orderBy('title', 'asc')->get();
+        $pagesMap = $pages->keyBy('slug');
+
+        $attachPageContent = function($menu) use ($pagesMap) {
+            $menu->page_content = '';
+            $menu->image_url = '';
+            $menu->page_id = null;
+            $menu->documents = [];
+            $menu->links = [];
+            $menu->is_external = false;
+            $menu->is_editable_page = false;
+
+            $url = trim($menu->url ?? '');
+            
+            // External link check
+            if ($menu->type === 'external' || $menu->type === 'external_link' || preg_match('/^https?:\/\//i', $url)) {
+                $menu->is_external = true;
+                $menu->type = 'external';
+                return;
+            }
+
+            $menu->type = 'internal';
+
+            // Anchor check
+            if ($url === '#' || empty($url)) {
+                return;
+            }
+
+            // Internal CMS page check
+            $menu->is_editable_page = true;
+            
+            $slug = null;
+            if (Str::contains($url, '/halaman/')) {
+                $slug = Str::after($url, '/halaman/');
+            } elseif ($url === '/') {
+                $slug = 'home';
+            } else {
+                $slug = Str::slug(ltrim($url, '/'));
+                if (empty($slug)) {
+                    $slug = Str::slug($menu->title);
+                }
+            }
+
+            $page = null;
+            if (isset($pagesMap[$slug])) {
+                $page = $pagesMap[$slug];
+            } else {
+                $page = Page::with(['documents', 'links'])->where('slug', $slug)
+                    ->orWhere('slug', 'like', '%' . $slug . '%')
+                    ->orWhere('title', 'like', '%' . $menu->title . '%')
+                    ->first();
+            }
+
+            if ($page) {
+                $menu->page_id = $page->id;
+                $menu->page_content = $page->content;
+                $menu->image_url = $page->image_url;
+                $menu->image_name = $page->image_name;
+                $menu->image_size = $page->image_size;
+                $menu->documents = $page->documents;
+                $menu->links = $page->links;
+            }
+        };
+
+        $attachPageContent($menuItem);
+
+        $allMenus = NavigationMenu::whereNull('parent_id')->with('children')->orderBy('order', 'asc')->get();
+        $menus = $allMenus->reject(function($m) {
+            return $this->isSystemAuthMenu($m);
+        })->values();
+
+        foreach ($menus as $m) {
+            $m->is_parent_container = ($m->url === '#' || ($m->children && count($m->children) > 0));
+            $attachPageContent($m);
+            if ($m->children) {
+                $filteredChildren = $m->children->reject(function($c) {
+                    return $this->isSystemAuthMenu($c);
+                })->values();
+                foreach ($filteredChildren as $child) {
+                    $attachPageContent($child);
+                }
+                $m->setRelation('children', $filteredChildren);
+            }
+        }
+
+        return view('admin.menus', compact('menus', 'pages', 'menuItem'));
+    }
+
+    public function pageEdit($id)
+    {
+        $id = $this->sanitizeId($id);
+        $pageItem = Page::findOrFail($id);
+        $pages = Page::latest()->get();
+        return view('admin.pages', compact('pages', 'pageItem'));
+    }
+
+    public function widgetEdit($id)
+    {
+        $id = $this->sanitizeId($id);
+        $widgetItem = SidebarWidget::findOrFail($id);
+        $widgets = SidebarWidget::orderBy('order', 'asc')->get();
+        return view('admin.widgets', compact('widgets', 'widgetItem'));
+    }
+
+    public function linkEdit($id)
+    {
+        $id = $this->sanitizeId($id);
+        $linkItem = RelatedLink::findOrFail($id);
+        $links = RelatedLink::orderBy('order', 'asc')->get();
+        return view('admin.links', compact('links', 'linkItem'));
+    }
+
+    public function mediaEdit(Request $request, $id)
+    {
+        $id = $this->sanitizeId($id);
+        $mediaItem = MediaItem::findOrFail($id);
+        $type = $request->get('type', $mediaItem->type ?? 'foto');
+        $query = MediaItem::orderBy('order', 'asc')->orderBy('created_at', 'desc');
+
+        if ($type && in_array($type, ['foto', 'video'])) {
+            $query->where('type', $type);
+        }
+
+        $mediaItems = $query->paginate(12)->withQueryString();
+
+        $stats = [
+            'total_foto' => MediaItem::where('type', 'foto')->count(),
+            'total_video' => MediaItem::where('type', 'video')->count(),
+        ];
+
+        return view('admin.media', compact('mediaItems', 'stats', 'type', 'mediaItem'));
+    }
+
+    public function userEdit($id)
+    {
+        $id = $this->sanitizeId($id);
+        $userItem = User::findOrFail($id);
+        $users = User::latest()->get();
+        return view('admin.users', compact('users', 'userItem'));
     }
 }

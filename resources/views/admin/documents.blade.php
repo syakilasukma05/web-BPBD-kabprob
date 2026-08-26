@@ -3,7 +3,7 @@
 @section('page_title', 'Kelola Dokumen Publik')
 
 @section('content')
-<div class="space-y-6" x-data="{ showModal: false, editMode: false, currentDoc: {} }">
+<div class="space-y-6" x-data="{ showModal: {{ isset($doc) ? 'true' : 'false' }}, editMode: {{ isset($doc) ? 'true' : 'false' }}, currentDoc: {{ isset($doc) ? json_encode($doc, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) : '{}' }} }">
     
     <!-- Page Header & Action Button -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs">
@@ -32,7 +32,7 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
-                    @forelse($documents as $index => $doc)
+                    @forelse($documents as $index => $docItem)
                         <tr class="hover:bg-slate-50/70 transition-colors">
                             <!-- No -->
                             <td class="px-5 py-4 text-center font-bold text-slate-600">
@@ -46,12 +46,12 @@
                                         <i class="fas fa-file-pdf text-red-500 text-base"></i>
                                     </div>
                                     <div>
-                                        <a href="{{ $doc->file_url }}" target="_blank" rel="noopener noreferrer" 
+                                        <a href="{{ $docItem->file_url }}" target="_blank" rel="noopener noreferrer" 
                                            class="font-bold text-slate-800 hover:text-orange-600 transition-colors text-xs leading-snug line-clamp-2 block">
-                                            {{ $doc->title }}
+                                            {{ $docItem->title }}
                                         </a>
-                                        @if($doc->description)
-                                            <p class="text-[11px] text-slate-400 font-normal line-clamp-1 mt-0.5">{{ $doc->description }}</p>
+                                        @if($docItem->description)
+                                            <p class="text-[11px] text-slate-400 font-normal line-clamp-1 mt-0.5">{{ $docItem->description }}</p>
                                         @endif
                                     </div>
                                 </div>
@@ -60,19 +60,19 @@
                             <!-- Kategori -->
                             <td class="px-5 py-4">
                                 <span class="px-3 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200/80 inline-block">
-                                    {{ $doc->category }}
+                                    {{ $docItem->category }}
                                 </span>
                             </td>
 
                             <!-- Tahun -->
                             <td class="px-4 py-4 text-center font-bold text-slate-700">
-                                {{ $doc->year ?? '2025' }}
+                                {{ $docItem->year ?? '2025' }}
                             </td>
 
                             <!-- Diunduh -->
                             <td class="px-4 py-4 text-center">
                                 <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-blue-600 text-white shadow-xs">
-                                    {{ $doc->download_count ?? 0 }}x
+                                    {{ $docItem->download_count ?? 0 }}x
                                 </span>
                             </td>
 
@@ -80,19 +80,20 @@
                             <td class="px-6 py-4 text-center">
                                 <div class="flex items-center justify-center gap-1.5">
                                     <!-- Download Button (Teal / Emerald) -->
-                                    <a href="{{ $doc->file_url }}" target="_blank" title="Unduh / Lihat File" 
+                                    <a href="{{ $docItem->file_url }}" target="_blank" title="Unduh / Lihat File" 
                                        class="w-8 h-8 rounded-lg bg-teal-50 border border-teal-200/80 text-teal-600 hover:bg-teal-600 hover:text-white flex items-center justify-center transition-all shadow-2xs">
                                         <i class="fas fa-download text-xs"></i>
                                     </a>
 
                                     <!-- Edit Button (Blue) -->
-                                    <button @click="showModal = true; editMode = true; currentDoc = {{ json_encode($doc) }}" title="Edit Dokumen"
-                                            class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200/80 text-blue-600 hover:bg-blue-600 hover:text-white flex items-center justify-center transition-all shadow-2xs">
+                                    <a href="{{ route('admin.documents.edit', preg_replace('/[\"\']/', '', $docItem->id)) }}" 
+                                       @click.prevent="showModal = true; editMode = true; currentDoc = {{ json_encode($docItem, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) }}" title="Edit Dokumen"
+                                       class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200/80 text-blue-600 hover:bg-blue-600 hover:text-white flex items-center justify-center transition-all shadow-2xs">
                                         <i class="fas fa-pen-to-square text-xs"></i>
-                                    </button>
+                                    </a>
 
                                     <!-- Delete Button (Rose) -->
-                                    <form action="{{ route('admin.documents.destroy', $doc->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus dokumen ini?')">
+                                    <form action="{{ route('admin.documents.destroy', $docItem->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus dokumen ini?')">
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit" title="Hapus Dokumen" 
@@ -133,7 +134,7 @@
             </div>
 
             <!-- Form Body -->
-            <form :action="editMode ? '{{ url('admin/documents') }}/' + currentDoc.id : '{{ route('admin.documents.store') }}'" method="POST" enctype="multipart/form-data" class="flex flex-col flex-1 overflow-hidden">
+            <form :action="editMode ? '{{ url('admin/documents') }}/' + String(currentDoc.id || '').replace(/['&quot;\\]/g, '') : '{{ route('admin.documents.store') }}'" method="POST" enctype="multipart/form-data" class="flex flex-col flex-1 overflow-hidden">
                 @csrf
                 <template x-if="editMode">
                     <input type="hidden" name="_method" value="PUT">

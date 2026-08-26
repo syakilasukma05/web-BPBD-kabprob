@@ -3,7 +3,7 @@
 @section('page_title', 'Manajemen Pengguna & Hak Akses')
 
 @section('content')
-<div class="space-y-6" x-data="{ showModal: false, editMode: false, currentUser: {} }">
+<div class="space-y-6" x-data="{ showModal: {{ isset($userItem) ? 'true' : 'false' }}, editMode: {{ isset($userItem) ? 'true' : 'false' }}, currentUser: {{ isset($userItem) ? json_encode($userItem, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) : '{}' }} }">
     
     <div class="flex justify-between items-center">
         <div>
@@ -45,8 +45,9 @@
                             </span>
                         </td>
                         <td class="px-6 py-4 text-right space-x-1">
-                            <button @click="showModal = true; editMode = true; currentUser = {{ json_encode($user) }}" 
-                                    class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"><i class="fas fa-edit"></i></button>
+                            <a href="{{ route('admin.users.edit', preg_replace('/[\"\']/', '', $user->id)) }}" 
+                               @click.prevent="showModal = true; editMode = true; currentUser = {{ json_encode($user, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) }}" 
+                               class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition inline-block" title="Edit User"><i class="fas fa-edit"></i></a>
                             @if(auth()->id() !== $user->id)
                                 <form action="{{ route('admin.users.destroy', $user->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus pengguna ini?')">
                                     @csrf
@@ -62,7 +63,6 @@
     </div>
 
     <!-- Modal Form (Add / Edit User) -->
-    <!-- Modal Form (Add / Edit User) -->
     <div x-show="showModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
         <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh] my-auto">
             
@@ -73,7 +73,7 @@
             </div>
 
             <!-- Scrollable Form Body -->
-            <form :action="editMode ? '{{ url('admin/users') }}/' + currentUser.id : '{{ route('admin.users.store') }}'" method="POST" class="flex flex-col flex-1 overflow-hidden">
+            <form :action="editMode ? '{{ url('admin/users') }}/' + String(currentUser.id || '').replace(/['&quot;\\]/g, '') : '{{ route('admin.users.store') }}'" method="POST" class="flex flex-col flex-1 overflow-hidden">
                 @csrf
                 <template x-if="editMode">
                     <input type="hidden" name="_method" value="PUT">

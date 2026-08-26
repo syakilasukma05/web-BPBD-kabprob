@@ -10,6 +10,7 @@ use App\Models\NewsItem;
 use App\Models\SidebarWidget;
 use App\Models\RelatedLink;
 use App\Models\Page;
+use App\Models\PageDocument;
 use App\Models\ContactMessage;
 use App\Models\PublicDocument;
 use App\Models\MediaItem;
@@ -47,15 +48,16 @@ class PublicController extends Controller
             ->orderBy('order', 'asc')
             ->get();
             
-        $page = Page::where('slug', $slug)->first();
+        $page = Page::where('slug', $slug)->with(['documents', 'links'])->first();
         if (!$page) {
-            $page = Page::where('slug', 'like', '%' . Str::slug($slug) . '%')->first();
+            $page = Page::where('slug', 'like', '%' . Str::slug($slug) . '%')->with(['documents', 'links'])->first();
         }
         if (!$page) {
             $page = Page::firstOrCreate(
                 ['slug' => $slug],
                 ['title' => ucwords(str_replace(['-', '_'], ' ', $slug)), 'content' => '<p class="text-center">Halaman sedang dalam pembaruan konten.</p>']
             );
+            $page->load(['documents', 'links']);
         }
 
         $latestNews = NewsItem::orderBy('published_at', 'desc')->take(3)->get();
@@ -63,6 +65,38 @@ class PublicController extends Controller
 
         return view('public.page', compact('settings', 'navMenus', 'page', 'latestNews', 'sidebarWidgets'));
     }
+
+    public function pageDocumentView($id)
+    {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
+        $document = PageDocument::findOrFail($id);
+        $path = storage_path('app/public/' . $document->file_path);
+        
+        if (!file_exists($path)) {
+            abort(404, 'File dokumen tidak ditemukan.');
+        }
+
+        return response()->file($path, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . e($document->file_name) . '"'
+        ]);
+    }
+
+    public function pageDocumentDownload($id)
+    {
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
+        $document = PageDocument::findOrFail($id);
+        $path = storage_path('app/public/' . $document->file_path);
+        
+        if (!file_exists($path)) {
+            abort(404, 'File dokumen tidak ditemukan.');
+        }
+
+        return response()->download($path, $document->file_name, [
+            'Content-Type' => 'application/pdf'
+        ]);
+    }
+
 
     public function newsDetail($slug)
     {
@@ -140,10 +174,15 @@ class PublicController extends Controller
             ->orderBy('order', 'asc')
             ->get();
 
+        $page = Page::where('slug', 'dokumen')->with(['documents', 'links'])->first();
+        if (!$page) {
+            $page = Page::where('slug', 'like', '%dokumen%')->with(['documents', 'links'])->first();
+        }
+
         $documents = PublicDocument::orderBy('created_at', 'desc')->paginate(10);
         $sidebarWidgets = SidebarWidget::where('is_active', true)->orderBy('order', 'asc')->get();
 
-        return view('public.documents', compact('settings', 'navMenus', 'documents', 'sidebarWidgets'));
+        return view('public.documents', compact('settings', 'navMenus', 'page', 'documents', 'sidebarWidgets'));
     }
 
     public function contact()

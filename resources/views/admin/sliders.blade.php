@@ -3,7 +3,7 @@
 @section('page_title', 'Kelola Banner Utama')
 
 @section('content')
-<div class="space-y-6" x-data="{ showModal: false, editMode: false, currentSlider: {} }">
+<div class="space-y-6" x-data="{ showModal: {{ isset($sliderItem) ? 'true' : 'false' }}, editMode: {{ isset($sliderItem) ? 'true' : 'false' }}, currentSlider: {{ isset($sliderItem) ? json_encode($sliderItem, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) : '{}' }} }">
     
     <!-- Header Action -->
     <div class="flex justify-between items-center">
@@ -46,8 +46,9 @@
                             </span>
                         </td>
                         <td class="px-6 py-4 text-right space-x-1">
-                            <button @click="showModal = true; editMode = true; currentSlider = {{ json_encode($slider) }}" 
-                                    class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"><i class="fas fa-edit"></i></button>
+                            <a href="{{ route('admin.sliders.edit', preg_replace('/[\"\']/', '', $slider->id)) }}" 
+                               @click.prevent="showModal = true; editMode = true; currentSlider = {{ json_encode($slider, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) }}" 
+                               class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition inline-block" title="Edit Banner"><i class="fas fa-edit"></i></a>
                             <form action="{{ route('admin.sliders.destroy', $slider->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus banner ini?')">
                                 @csrf
                                 @method('DELETE')
@@ -71,7 +72,7 @@
             </div>
 
             <!-- Scrollable Form Body -->
-            <form :action="editMode ? '{{ url('admin/sliders') }}/' + currentSlider.id : '{{ route('admin.sliders.store') }}'" method="POST" enctype="multipart/form-data" class="flex flex-col flex-1 overflow-hidden">
+            <form :action="editMode ? '{{ url('admin/sliders') }}/' + String(currentSlider.id || '').replace(/['&quot;\\]/g, '') : '{{ route('admin.sliders.store') }}'" method="POST" enctype="multipart/form-data" class="flex flex-col flex-1 overflow-hidden">
                 @csrf
                 <template x-if="editMode">
                     <input type="hidden" name="_method" value="PUT">

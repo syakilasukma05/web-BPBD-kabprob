@@ -3,15 +3,55 @@
 @section('page_title', 'Kelola Berita & Informasi Kebencanaan')
 
 @section('content')
-<div class="space-y-6" x-data="{ showModal: false, editMode: false, currentNews: {} }">
+<div class="space-y-6" x-data="{ 
+    showModal: {{ isset($newsItem) ? 'true' : 'false' }}, 
+    editMode: {{ isset($newsItem) ? 'true' : 'false' }}, 
+    currentNews: {{ isset($newsItem) ? json_encode($newsItem, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) : '{}' }},
+    ckEditor: null,
+
+    initNewsEditor(content = '') {
+        this.$nextTick(() => {
+            const clean = window.sanitizeCkHtml(content || '');
+            if (this.ckEditor) {
+                this.ckEditor.setData(clean);
+                return;
+            }
+            window.initStandardCKEditor('news_content_textarea', clean, (data) => {
+                this.currentNews.content = data;
+            }).then(editor => {
+                this.ckEditor = editor;
+            }).catch(err => {
+                console.warn('CKEditor init warning:', err);
+            });
+        });
+    },
+
+    openCreate() {
+        this.showModal = true;
+        this.editMode = false;
+        this.currentNews = { category: 'Peringatan Dini', published_at: '{{ date('Y-m-d') }}' };
+        this.initNewsEditor('');
+    },
+
+    openEdit(newsData) {
+        this.showModal = true;
+        this.editMode = true;
+        this.currentNews = Object.assign({}, newsData);
+        this.initNewsEditor(this.currentNews.content || '');
+    }
+}" x-init="
+    @if(isset($newsItem))
+        openEdit({!! json_encode($newsItem, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) !!});
+    @endif
+">
     
-    <div class="flex justify-between items-center">
+    <div class="flex justify-between items-center bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div>
-            <h3 class="text-lg font-bold text-slate-800">Daftar Berita & Pengumuman</h3>
-            <p class="text-xs text-slate-500">Kelola artikel berita publik yang tampil di homepage dan portal berita BPBD</p>
+            <h3 class="text-lg font-extrabold text-slate-800 tracking-tight">Daftar Berita & Pengumuman</h3>
+            <p class="text-xs text-slate-500 mt-1">Kelola artikel berita publik yang tampil di homepage dan portal berita BPBD</p>
         </div>
-        <button @click="showModal = true; editMode = false; currentNews = { category: 'Peringatan Dini', published_at: '{{ date('Y-m-d') }}' }" 
-                class="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2">
+        <button type="button" @click="openCreate()" 
+                class="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition hover:scale-[1.02]">
             <i class="fas fa-plus"></i> Publish Berita Baru
         </button>
     </div>
@@ -50,8 +90,9 @@
                             {{ $news->views }}
                         </td>
                         <td class="px-6 py-4 text-right space-x-1">
-                            <button @click="showModal = true; editMode = true; currentNews = {{ json_encode($news) }}" 
-                                    class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"><i class="fas fa-edit"></i></button>
+                            <a href="{{ route('admin.news.edit', preg_replace('/[\"\']/', '', $news->id)) }}" 
+                               @click.prevent="openEdit({{ json_encode($news, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) }})" 
+                               class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition inline-block" title="Edit Berita"><i class="fas fa-edit"></i></a>
                             <form action="{{ route('admin.news.destroy', $news->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus berita ini?')">
                                 @csrf
                                 @method('DELETE')
@@ -69,7 +110,7 @@
 
     <!-- Modal Form (Add / Edit News) -->
     <div x-show="showModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
-        <div class="bg-white rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh] my-auto">
+        <div class="bg-white rounded-2xl max-w-3xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh] my-auto">
             
             <!-- Fixed Header -->
             <div class="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-white shrink-0">
@@ -78,7 +119,7 @@
             </div>
 
             <!-- Scrollable Form Body -->
-            <form :action="editMode ? '{{ url('admin/news') }}/' + currentNews.id : '{{ route('admin.news.store') }}'" method="POST" enctype="multipart/form-data" class="flex flex-col flex-1 overflow-hidden">
+            <form :action="editMode ? '{{ url('admin/news') }}/' + String(currentNews.id || '').replace(/['&quot;\\]/g, '') : '{{ route('admin.news.store') }}'" method="POST" enctype="multipart/form-data" class="flex flex-col flex-1 overflow-hidden">
                 @csrf
                 <template x-if="editMode">
                     <input type="hidden" name="_method" value="PUT">
@@ -126,8 +167,8 @@
                     </div>
 
                     <div>
-                        <label class="block font-bold text-slate-700 mb-1">Isi Berita (Content)</label>
-                        <textarea name="content" rows="4" x-model="currentNews.content" placeholder="Tuliskan berita lengkap..." class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:outline-none"></textarea>
+                        <label class="block font-bold text-slate-700 mb-1">Isi Berita (CKEditor 5 Visual Editor)</label>
+                        <textarea id="news_content_textarea" name="content" x-model="currentNews.content" class="w-full min-h-[300px]"></textarea>
                     </div>
                 </div>
 

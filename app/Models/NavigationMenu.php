@@ -9,7 +9,7 @@ class NavigationMenu extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['title', 'url', 'parent_id', 'order', 'target', 'is_active'];
+    protected $fillable = ['title', 'url', 'type', 'parent_id', 'order', 'target', 'is_active'];
 
     public function children()
     {
@@ -19,5 +19,23 @@ class NavigationMenu extends Model
     public function parent()
     {
         return $this->belongsTo(NavigationMenu::class, 'parent_id');
+    }
+
+    public function getMenuTypeAttribute()
+    {
+        if ($this->type === 'external' || $this->type === 'external_link' || preg_match('/^https?:\/\//i', trim($this->url ?? ''))) {
+            return 'external_link';
+        }
+        return 'page';
+    }
+
+    public function getExternalUrlAttribute()
+    {
+        return $this->url;
+    }
+
+    public function getIsExternalAttribute()
+    {
+        return $this->menu_type === 'external_link';
     }
 }

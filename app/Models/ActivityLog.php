@@ -30,6 +30,7 @@ class ActivityLog extends Model
     public static function record($action, $description = null)
     {
         $user = auth()->user();
+        $now = now('Asia/Jakarta');
         return self::create([
             'user_id' => $user ? $user->id : null,
             'user_name' => $user ? $user->name : 'Sistem / Tamu',
@@ -38,6 +39,8 @@ class ActivityLog extends Model
             'description' => $description,
             'ip_address' => request()->ip(),
             'user_agent' => request()->userAgent(),
+            'created_at' => $now,
+            'updated_at' => $now,
         ]);
     }
 }

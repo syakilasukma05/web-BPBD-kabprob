@@ -3,7 +3,7 @@
 @section('page_title', 'Kelola Tautan Terkait & Logo Mitigasi')
 
 @section('content')
-<div class="space-y-6" x-data="{ showModal: false, editMode: false, currentLink: {} }">
+<div class="space-y-6" x-data="{ showModal: {{ isset($linkItem) ? 'true' : 'false' }}, editMode: {{ isset($linkItem) ? 'true' : 'false' }}, currentLink: {{ isset($linkItem) ? json_encode($linkItem, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) : '{}' }} }">
     
     <div class="flex justify-between items-center">
         <div>
@@ -44,8 +44,9 @@
                             </a>
                         </td>
                         <td class="px-6 py-4 text-right space-x-1">
-                            <button @click="showModal = true; editMode = true; currentLink = {{ json_encode($link) }}" 
-                                    class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"><i class="fas fa-edit"></i></button>
+                            <a href="{{ route('admin.links.edit', preg_replace('/[\"\']/', '', $link->id)) }}" 
+                               @click.prevent="showModal = true; editMode = true; currentLink = {{ json_encode($link, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) }}" 
+                               class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition inline-block" title="Edit Tautan"><i class="fas fa-edit"></i></a>
                             <form action="{{ route('admin.links.destroy', $link->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus tautan ini?')">
                                 @csrf
                                 @method('DELETE')
@@ -69,7 +70,7 @@
             </div>
 
             <!-- Scrollable Form Body -->
-            <form :action="editMode ? '{{ url('admin/links') }}/' + currentLink.id : '{{ route('admin.links.store') }}'" method="POST" enctype="multipart/form-data" class="flex flex-col flex-1 overflow-hidden">
+            <form :action="editMode ? '{{ url('admin/links') }}/' + String(currentLink.id || '').replace(/['&quot;\\]/g, '') : '{{ route('admin.links.store') }}'" method="POST" enctype="multipart/form-data" class="flex flex-col flex-1 overflow-hidden">
                 @csrf
                 <template x-if="editMode">
                     <input type="hidden" name="_method" value="PUT">

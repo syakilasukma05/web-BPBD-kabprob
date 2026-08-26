@@ -92,6 +92,13 @@
                     <i class="fas fa-newspaper text-sm text-purple-400"></i> Berita & Informasi
                 </a>
 
+                @if(!auth()->user()->isSuperAdmin())
+                    <a href="{{ route('admin.staf_logs') }}" 
+                       class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all {{ request()->routeIs('admin.staf_logs') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 font-bold' : 'hover:bg-slate-800/80 text-slate-300' }}">
+                        <i class="fas fa-clipboard-list text-sm text-amber-400"></i> Log Aktivitas
+                    </a>
+                @endif
+
                 <!-- RESTRICTED TO SUPER ADMIN ONLY -->
                 @if(auth()->user()->isSuperAdmin())
                     <div class="pt-4 text-[10px] text-slate-500 uppercase tracking-widest px-3 py-1 font-bold">Pengelolaan Konten</div>
@@ -101,9 +108,14 @@
                         <i class="fas fa-images text-sm text-amber-400"></i> Banner Utama
                     </a>
 
+                    <a href="{{ route('admin.navigation') }}" 
+                       class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all {{ request()->routeIs('admin.navigation*') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 font-bold' : 'hover:bg-slate-800/80 text-slate-300' }}">
+                        <i class="fas fa-sitemap text-sm text-cyan-400"></i> Struktur Navigasi
+                    </a>
+
                     <a href="{{ route('admin.menus') }}" 
-                       class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all {{ request()->routeIs('admin.menus') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 font-bold' : 'hover:bg-slate-800/80 text-slate-300' }}">
-                        <i class="fas fa-bars text-sm text-cyan-400"></i> Menu Navigasi
+                       class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all {{ request()->routeIs('admin.menus*') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 font-bold' : 'hover:bg-slate-800/80 text-slate-300' }}">
+                        <i class="fas fa-file-signature text-sm text-emerald-400"></i> CMS Editor Konten
                     </a>
 
                     <a href="{{ route('admin.pages') }}" 
@@ -124,11 +136,6 @@
                     <a href="{{ route('admin.media') }}" 
                        class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all {{ request()->routeIs('admin.media') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 font-bold' : 'hover:bg-slate-800/80 text-slate-300' }}">
                         <i class="fas fa-photo-video text-sm text-amber-400"></i> Galeri Media (Foto & Video)
-                    </a>
-
-                    <a href="{{ route('admin.messages') }}" 
-                       class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all {{ request()->routeIs('admin.messages') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 font-bold' : 'hover:bg-slate-800/80 text-slate-300' }}">
-                        <i class="fas fa-bullhorn text-sm text-red-400"></i> Aspirasi & Pengaduan
                     </a>
 
                     <a href="{{ route('admin.users') }}" 
@@ -215,14 +222,133 @@
                 </div>
             @endif
 
+            <!-- Validation Errors List Alert -->
+            @if($errors->any())
+                <div class="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold space-y-1.5 shadow-xs">
+                    <div class="flex items-center gap-2 font-extrabold text-rose-900">
+                        <i class="fas fa-exclamation-circle text-rose-600 text-base"></i>
+                        <span>Terjadi Kesalahan Validasi Input:</span>
+                    </div>
+                    <ul class="list-disc list-inside pl-6 space-y-1 text-slate-700 font-medium">
+                        @foreach($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+
             @yield('content')
         </main>
 
-        <!-- Admin Footer -->
-        <footer class="bg-white border-t border-slate-200 py-4 px-8 text-center text-xs text-slate-400">
-            BPBD Kabupaten Probolinggo &copy; 2026. Panel Administrator Website Resmi.
-        </footer>
+
     </div>
 
+    <!-- CKEditor 5 Global Script & Protection Guard -->
+    <script src="https://cdn.ckeditor.com/ckeditor5/39.0.1/classic/ckeditor.js"></script>
+    <script>
+        // Global HTML Sanitizer for CKEditor links (tel:, mailto:, http:, https:)
+        window.sanitizeCkHtml = function(html) {
+            if (!html) return '';
+            let clean = String(html);
+            
+            // Clean double-escaped entities if present
+            if (clean.includes('&lt;') || clean.includes('&gt;') || clean.includes('&amp;')) {
+                const txt = document.createElement('textarea');
+                txt.innerHTML = clean;
+                clean = txt.value;
+            }
+
+            // Fix tel:, mailto:, http:, https: links:
+            // Remove leading slashes/quotes like /"tel: or /tel:
+            clean = clean.replace(/href=["']\/?(?:"|%22)?(tel|mailto|https?):/gi, function(match, proto) {
+                return 'href="' + proto + ':';
+            });
+
+            // Clean trailing slashes, quotes, and invalid characters from tel: and mailto: hrefs
+            clean = clean.replace(/href=["'](tel:[0-9+\-\s()]+?)\/*["']/gi, 'href="$1"');
+            clean = clean.replace(/href=["'](mailto:[^"'\/\s]+?)\/*["']/gi, 'href="$1"');
+            
+            // General replace for any corrupt tel/mailto links
+            clean = clean.replace(/href=["']\/?(?:"|%22)?((?:tel|mailto):[^"'\s>]+?)(?:\/|%22|")?["']/gi, function(match, targetUrl) {
+                let sanitized = targetUrl.replace(/\/+$/, '').replace(/^["']|["']$/g, '');
+                return 'href="' + sanitized + '"';
+            });
+
+            return clean.trim();
+        };
+
+        // Global Click Guard: Prevent browser navigation when user clicks inside ANY CKEditor area
+        document.addEventListener('click', function(e) {
+            const linkTag = e.target.closest('a');
+            const insideCkEditor = e.target.closest('.ck-editor, .ck-content, .ck-editable, .ck-editor__editable');
+            if (linkTag && insideCkEditor) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        }, true);
+
+        // Standardized Global CKEditor Builder
+        window.initStandardCKEditor = function(textareaId, initialContent, onChangeCallback) {
+            const textarea = document.getElementById(textareaId);
+            if (!textarea) return Promise.reject('Textarea not found');
+
+            textarea.removeAttribute('readonly');
+            textarea.removeAttribute('disabled');
+
+            const cleanData = window.sanitizeCkHtml(initialContent || textarea.value || '');
+            textarea.value = cleanData;
+
+            const config = {
+                toolbar: [
+                    'heading', '|',
+                    'bold', 'italic', 'underline', 'strikethrough', 'code', '|',
+                    'bulletedList', 'numberedList', '|',
+                    'outdent', 'indent', '|',
+                    'link', 'insertTable', 'blockQuote', '|',
+                    'undo', 'redo'
+                ],
+                link: {
+                    defaultProtocol: 'https://',
+                    addTargetToExternalLinks: false
+                },
+                placeholder: 'Tuliskan isi konten profesional di sini...'
+            };
+
+            const attach = (editorClass) => {
+                return editorClass.create(textarea, config).then(editor => {
+                    editor.isReadOnly = false;
+                    if (typeof editor.disableReadOnlyMode === 'function') {
+                        editor.disableReadOnlyMode('manual');
+                    }
+                    if (editor.editing && editor.editing.view) {
+                        editor.editing.view.isReadOnly = false;
+                    }
+
+                    editor.setData(cleanData);
+
+                    editor.model.document.on('change:data', () => {
+                        const currentData = window.sanitizeCkHtml(editor.getData());
+                        textarea.value = currentData;
+                        if (typeof onChangeCallback === 'function') {
+                            onChangeCallback(currentData);
+                        }
+                    });
+
+                    return editor;
+                });
+            };
+
+            if (typeof ClassicEditor !== 'undefined') {
+                return attach(ClassicEditor);
+            } else if (typeof CKEDITOR !== 'undefined' && CKEDITOR.ClassicEditor) {
+                return attach(CKEDITOR.ClassicEditor);
+            }
+
+            return Promise.reject('CKEditor library not loaded');
+        };
+    </script>
 </body>
 </html>
+

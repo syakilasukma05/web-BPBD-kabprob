@@ -3,7 +3,7 @@
 @section('page_title', 'Kelola Galeri Media (Foto & Video)')
 
 @section('content')
-<div class="space-y-6" x-data="{ showModal: false, editMode: false, currentItem: { type: 'foto', is_active: true } }">
+<div class="space-y-6" x-data="{ showModal: {{ isset($mediaItem) ? 'true' : 'false' }}, editMode: {{ isset($mediaItem) ? 'true' : 'false' }}, currentItem: {{ isset($mediaItem) ? json_encode($mediaItem, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) : '{ type: \'foto\', is_active: true }' }} }">
 
     <!-- Header Title & Action Buttons -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -121,10 +121,11 @@
                     <span class="text-[10px] text-slate-400 font-mono">Urutan: {{ $item->order }}</span>
 
                     <div class="flex items-center gap-1">
-                        <button @click="showModal = true; editMode = true; currentItem = {{ json_encode($item) }}" 
-                                class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit Media">
+                        <a href="{{ route('admin.media.edit', preg_replace('/[\"\']/', '', $item->id)) }}" 
+                           @click.prevent="showModal = true; editMode = true; currentItem = {{ json_encode($item, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) }}" 
+                           class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition inline-block" title="Edit Media">
                             <i class="fas fa-edit"></i>
-                        </button>
+                        </a>
 
                         <form action="{{ route('admin.media.destroy', $item->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus media ini?')">
                             @csrf
@@ -158,7 +159,7 @@
                 <button @click="showModal = false" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
             </div>
 
-            <form :action="editMode ? '{{ url('admin/media') }}/' + currentItem.id : '{{ route('admin.media.store') }}'" 
+            <form :action="editMode ? '{{ url('admin/media') }}/' + String(currentItem.id || '').replace(/['&quot;\\]/g, '') : '{{ route('admin.media.store') }}'" 
                   method="POST" 
                   enctype="multipart/form-data" 
                   class="p-6 space-y-4 text-xs">

@@ -28,7 +28,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body class="bg-white text-slate-700 font-sans antialiased min-h-screen flex flex-col selection:bg-orange-600 selection:text-white"
-      x-data="{ mobileMenu: false }">
+      x-data="{ mobileMenu: false, pdfModalOpen: false, currentPdfUrl: '', currentPdfTitle: '' }">
 
     <!-- Main Header / Navigation Wrap (Matching Official Header Design 100%) -->
     <header class="sticky top-0 z-50 bg-white border-b-4 border-[#375e47] shadow-xs transition-all duration-300">
@@ -40,7 +40,15 @@
                     <a href="{{ route('home') }}" class="group flex items-center gap-3">
                         <img src="{{ (!empty($settings['logo_frontend']) && !str_contains($settings['logo_frontend'], 'diskominfo.probolinggokab.go.id')) ? $settings['logo_frontend'] : asset('images/logo-bpbd.svg') }}" 
                              alt="Logo Instansi" 
-                             class="h-12 w-auto object-contain transition-transform group-hover:scale-105 duration-200">
+                             class="h-11 sm:h-12 w-auto object-contain transition-transform group-hover:scale-105 duration-200">
+                        <div class="flex flex-col justify-center leading-tight">
+                            <span class="font-extrabold text-xs sm:text-sm md:text-base text-[#1b263b] tracking-tight group-hover:text-[#375e47] transition-colors uppercase">
+                                BPBD KABUPATEN PROBOLINGGO
+                            </span>
+                            <span class="font-bold text-[9px] sm:text-[11px] text-orange-600 tracking-wider uppercase">
+                                BADAN PENANGGULANGAN BENCANA DAERAH
+                            </span>
+                        </div>
                     </a>
                 </div>
 
@@ -70,7 +78,12 @@
                                      x-transition:leave-end="opacity-0 translate-y-2"
                                      class="absolute left-0 mt-1 w-64 rounded-xl bg-white shadow-xl ring-1 ring-black/5 border border-slate-100 py-2 z-50 overflow-hidden">
                                     @foreach($menu->children as $child)
-                                        <a href="{{ $child->url }}" target="{{ $child->target }}"
+                                        @php
+                                            $isExt = ($child->menu_type === 'external_link' || $child->is_external || preg_match('/^https?:\/\//i', trim($child->url ?? '')));
+                                            $linkUrl = $isExt ? ($child->external_url ?? $child->url) : $child->url;
+                                            $targetAttr = $child->target ?: ($isExt ? '_blank' : '_self');
+                                        @endphp
+                                        <a href="{{ $linkUrl }}" target="{{ $targetAttr }}"
                                            onmouseenter="speakText('{{ e($child->title) }}')"
                                            class="block px-4 py-2.5 text-xs text-slate-700 hover:bg-[#375e47] hover:text-white transition-colors duration-150 font-semibold">
                                             {{ $child->title }}
@@ -80,7 +93,12 @@
                             </div>
                         @else
                             <!-- Single Link Item -->
-                            <a href="{{ $menu->url }}" target="{{ $menu->target }}" 
+                            @php
+                                $isExt = ($menu->menu_type === 'external_link' || $menu->is_external || preg_match('/^https?:\/\//i', trim($menu->url ?? '')));
+                                $linkUrl = $isExt ? ($menu->external_url ?? $menu->url) : $menu->url;
+                                $targetAttr = $menu->target ?: ($isExt ? '_blank' : '_self');
+                            @endphp
+                            <a href="{{ $linkUrl }}" target="{{ $targetAttr }}" 
                                onmouseenter="speakText('{{ e($menu->title) }}')"
                                class="px-2 py-2 text-sm font-extrabold tracking-wide text-[#23325c] hover:text-[#375e47] uppercase transition-colors duration-150">
                                 {{ $menu->title }}
@@ -120,12 +138,123 @@
             @endif
 
             <!-- Dynamic Content Output (Formatted centered matching screenshot) -->
-            <div class="prose max-w-none text-[#23325c] leading-relaxed text-sm sm:text-base font-medium space-y-6">
-                {!! $page->content !!}
-            </div>
+            @php
+                $cleanContent = trim(strip_tags($page->content ?? ''));
+                $isPlaceholder = ($cleanContent === 'Halaman sedang dalam pembaruan konten.' || empty($cleanContent));
+                $hasDocs = $page->documents && count($page->documents) > 0;
+            @endphp
+            @if(!$isPlaceholder || !$hasDocs)
+                <div class="prose max-w-none text-[#23325c] leading-relaxed text-sm sm:text-base font-medium space-y-6">
+                    {!! $page->content !!}
+                </div>
+            @endif
+
+            <!-- Dokumen Pendukung Halaman (PDF) -->
+            @if($page->documents && count($page->documents) > 0)
+                <div class="mt-12 pt-8 border-t border-slate-200 text-left">
+                    <h3 class="text-lg font-extrabold text-[#23325c] tracking-tight flex items-center gap-2.5 mb-6">
+                        <i class="fas fa-folder-open text-orange-600"></i> Dokumen Pendukung Halaman
+                    </h3>
+
+                    <div class="space-y-4">
+                        @foreach($page->documents as $doc)
+                            <div class="bg-slate-50 rounded-2xl p-4 sm:p-5 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-orange-300 hover:shadow-md transition">
+                                <div class="flex items-center gap-3.5">
+                                    <div class="w-11 h-11 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center text-xl font-bold shrink-0 border border-rose-200 shadow-2xs">
+                                        <i class="fas fa-file-pdf"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-extrabold text-slate-800 text-sm tracking-wide">{{ $doc->file_name }}</h4>
+                                        <p class="text-xs text-slate-500 font-medium mt-0.5">
+                                            Ukuran: {{ $doc->file_size ? ($doc->file_size > 1048576 ? number_format($doc->file_size / 1048576, 2) . ' MB' : number_format($doc->file_size / 1024, 1) . ' KB') : '0 KB' }}
+                                            &bull; Diunggah: {{ $doc->created_at ? $doc->created_at->format('d M Y') : '-' }}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-2.5 self-start sm:self-center shrink-0">
+                                    <button type="button" 
+                                            @click="currentPdfUrl = '{{ route('page_documents.view', $doc->id) }}'; currentPdfTitle = '{{ e($doc->file_name) }}'; pdfModalOpen = true"
+                                            class="px-4 py-2.5 bg-[#375e47] hover:bg-[#2d4d3a] text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-2 transform hover:scale-[1.02]">
+                                        <i class="fas fa-eye"></i> Lihat PDF
+                                    </button>
+                                    <a href="{{ route('page_documents.download', $doc->id) }}" 
+                                       class="px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-2 transform hover:scale-[1.02]">
+                                        <i class="fas fa-download"></i> Download PDF
+                                    </a>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
+            <!-- Link Terkait Halaman -->
+            @php
+                $activePageLinks = $page->links ? $page->links->where('status', 'aktif') : collect();
+            @endphp
+            @if($activePageLinks && $activePageLinks->count() > 0)
+                <div class="mt-12 pt-8 border-t border-slate-200 text-left">
+                    <h3 class="text-lg font-extrabold text-[#23325c] tracking-tight flex items-center gap-2.5 mb-6">
+                        <i class="fas fa-link text-orange-600"></i> Link Terkait
+                    </h3>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        @foreach($activePageLinks as $link)
+                            <div class="bg-slate-50 rounded-2xl p-5 border border-slate-200 flex flex-col justify-between gap-3 hover:border-orange-300 hover:shadow-md transition">
+                                <div class="space-y-1.5">
+                                    <h4 class="font-extrabold text-slate-800 text-sm tracking-wide flex items-center gap-2">
+                                        <span class="text-base">🔗</span>
+                                        <span>{{ $link->title }}</span>
+                                    </h4>
+                                    @if($link->description)
+                                        <p class="text-xs text-slate-500 font-medium leading-relaxed">
+                                            Keterangan: {{ $link->description }}
+                                        </p>
+                                    @endif
+                                </div>
+
+                                <div class="pt-2 flex justify-start">
+                                    <a href="{{ $link->url }}" target="{{ $link->target ?? '_blank' }}" rel="noopener noreferrer"
+                                       class="px-4 py-2.5 bg-[#375e47] hover:bg-[#2d4d3a] text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-2 transform hover:scale-[1.02]">
+                                        <i class="fas fa-external-link-alt text-[10px]"></i> Kunjungi
+                                    </a>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
 
         </div>
     </main>
+
+    <!-- PDF Interactive Preview Modal -->
+    <div x-show="pdfModalOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm overflow-hidden">
+        <div class="bg-white rounded-2xl max-w-5xl w-full h-[90vh] shadow-2xl overflow-hidden flex flex-col" @click.away="pdfModalOpen = false">
+            <div class="flex justify-between items-center px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center text-sm font-bold">
+                        <i class="fas fa-file-pdf"></i>
+                    </div>
+                    <h4 class="font-extrabold text-slate-800 text-sm truncate max-w-lg" x-text="currentPdfTitle"></h4>
+                </div>
+                <div class="flex items-center gap-2">
+                    <a :href="currentPdfUrl.replace('/view', '/download')" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center gap-1.5">
+                        <i class="fas fa-download"></i> Download PDF
+                    </a>
+                    <button type="button" @click="pdfModalOpen = false" class="p-2 text-slate-400 hover:text-slate-600 rounded-xl transition">
+                        <i class="fas fa-times text-lg"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="flex-1 bg-slate-100 p-2">
+                <template x-if="pdfModalOpen">
+                    <iframe :src="currentPdfUrl" class="w-full h-full rounded-xl border border-slate-200 bg-white" title="PDF Preview"></iframe>
+                </template>
+            </div>
+        </div>
+    </div>
 
 
 

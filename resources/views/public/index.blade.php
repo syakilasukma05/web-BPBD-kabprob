@@ -53,6 +53,18 @@
         .high-contrast {
             filter: contrast(160%) brightness(90%);
         }
+        @keyframes ticker-marquee {
+            0% { transform: translate3d(0, 0, 0); }
+            100% { transform: translate3d(-50%, 0, 0); }
+        }
+        .animate-news-ticker {
+            display: inline-flex;
+            white-space: nowrap;
+            animation: ticker-marquee 30s linear infinite;
+        }
+        .animate-news-ticker:hover {
+            animation-play-state: paused;
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col selection:bg-orange-600 selection:text-white"
@@ -68,9 +80,47 @@
       }"
       :class="{ 'high-contrast': highContrast }"
       :style="`font-size: ${fontSize}%`"
-      x-init="setInterval(() => nextSlide(), 7000)">
+       x-init="setInterval(() => nextSlide(), 7000)">
 
+    <!-- 1. Top Info Bar Baru (Berita Terbaru Bar) -->
+    <div class="bg-[#1b263b] text-white border-b border-slate-700/80 text-xs py-2 px-4 shadow-sm z-50 overflow-hidden">
+        <div class="max-w-7xl mx-auto flex items-center justify-between gap-3">
+            <!-- Left Badge Label -->
+            <div class="flex items-center gap-2 shrink-0 z-10 bg-[#1b263b] pr-2 sm:pr-4">
+                <span class="inline-flex items-center gap-1.5 bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-[11px] px-3 py-1 rounded-md uppercase tracking-wider shadow-xs transition-colors">
+                    <i class="fas fa-newspaper text-amber-200"></i> BERITA TERBARU:
+                </span>
+            </div>
 
+            <!-- Ticker Running Text -->
+            <div class="flex-1 overflow-hidden relative h-5 flex items-center">
+                @if(isset($latestNews) && count($latestNews) > 0)
+                    @php
+                        $newsItemsList = count($latestNews) < 3 ? array_merge($latestNews->all(), $latestNews->all(), $latestNews->all(), $latestNews->all()) : array_merge($latestNews->all(), $latestNews->all());
+                    @endphp
+                    <div class="w-full overflow-hidden whitespace-nowrap">
+                        <div class="animate-news-ticker items-center">
+                            @foreach($newsItemsList as $news)
+                                @php
+                                    $newsUrl = $news->link_url ?: (Route::has('news.detail') ? route('news.detail', $news->slug) : '/berita/' . $news->slug);
+                                @endphp
+                                <a href="{{ $newsUrl }}" class="inline-flex items-center gap-2 text-slate-200 hover:text-amber-300 font-medium text-xs me-8 transition-colors">
+                                    <span class="text-orange-400">📰</span>
+                                    <span>{{ $news->title }}</span>
+                                    @if($news->published_at)
+                                        <span class="text-[10px] text-slate-400 font-mono">({{ \Carbon\Carbon::parse($news->published_at)->format('d M Y') }})</span>
+                                    @endif
+                                </a>
+                                <span class="text-slate-600 font-bold me-8">•</span>
+                            @endforeach
+                        </div>
+                    </div>
+                @else
+                    <span class="text-slate-400 italic text-[11px]">BPBD Kabupaten Probolinggo - Siap, Sigap, Tanggap Bencana!</span>
+                @endif
+            </div>
+        </div>
+    </div>
 
     <!-- Main Header / Navigation Wrap (Matching Official Header Design) -->
     <header class="sticky top-0 z-50 bg-white border-b-4 border-[#375e47] shadow-sm transition-all duration-300">
@@ -82,7 +132,15 @@
                     <a href="{{ route('home') }}" class="group flex items-center gap-3">
                         <img src="{{ (!empty($settings['logo_frontend']) && !str_contains($settings['logo_frontend'], 'diskominfo.probolinggokab.go.id')) ? $settings['logo_frontend'] : asset('images/logo-bpbd.svg') }}" 
                              alt="Logo Instansi" 
-                             class="h-12 w-auto object-contain transition-transform group-hover:scale-105 duration-200">
+                             class="h-11 sm:h-12 w-auto object-contain transition-transform group-hover:scale-105 duration-200">
+                        <div class="flex flex-col justify-center leading-tight">
+                            <span class="font-extrabold text-xs sm:text-sm md:text-base text-[#1b263b] tracking-tight group-hover:text-[#375e47] transition-colors uppercase">
+                                BPBD KABUPATEN PROBOLINGGO
+                            </span>
+                            <span class="font-bold text-[9px] sm:text-[11px] text-orange-600 tracking-wider uppercase">
+                                BADAN PENANGGULANGAN BENCANA DAERAH
+                            </span>
+                        </div>
                     </a>
                 </div>
 
@@ -112,7 +170,12 @@
                                      x-transition:leave-end="opacity-0 translate-y-2"
                                      class="absolute left-0 mt-1 w-64 rounded-xl bg-white shadow-xl ring-1 ring-black/5 border border-slate-100 py-2 z-50 overflow-hidden">
                                     @foreach($menu->children as $child)
-                                        <a href="{{ $child->url }}" target="{{ $child->target }}"
+                                        @php
+                                            $isExt = ($child->menu_type === 'external_link' || $child->is_external || preg_match('/^https?:\/\//i', trim($child->url ?? '')));
+                                            $linkUrl = $isExt ? ($child->external_url ?? $child->url) : $child->url;
+                                            $targetAttr = $child->target ?: ($isExt ? '_blank' : '_self');
+                                        @endphp
+                                        <a href="{{ $linkUrl }}" target="{{ $targetAttr }}"
                                            onmouseenter="speakText('{{ e($child->title) }}')"
                                            class="block px-4 py-2.5 text-xs text-slate-700 hover:bg-[#375e47] hover:text-white transition-colors duration-150 font-semibold">
                                             {{ $child->title }}
@@ -122,7 +185,12 @@
                             </div>
                         @else
                             <!-- Single Link Item -->
-                            <a href="{{ $menu->url }}" target="{{ $menu->target }}" 
+                            @php
+                                $isExt = ($menu->menu_type === 'external_link' || $menu->is_external || preg_match('/^https?:\/\//i', trim($menu->url ?? '')));
+                                $linkUrl = $isExt ? ($menu->external_url ?? $menu->url) : $menu->url;
+                                $targetAttr = $menu->target ?: ($isExt ? '_blank' : '_self');
+                            @endphp
+                            <a href="{{ $linkUrl }}" target="{{ $targetAttr }}" 
                                onmouseenter="speakText('{{ e($menu->title) }}')"
                                class="px-2 py-2 text-sm font-extrabold tracking-wide text-[#23325c] hover:text-[#375e47] uppercase transition-colors duration-150">
                                 {{ $menu->title }}
@@ -169,14 +237,24 @@
                         </button>
                         <div x-show="subOpen" class="pl-4 space-y-1">
                             @foreach($menu->children as $child)
-                                <a href="{{ $child->url }}" class="block px-3 py-2 text-xs font-medium text-slate-600 hover:text-orange-600 hover:bg-orange-50 rounded-md">
+                                @php
+                                    $isExt = ($child->menu_type === 'external_link' || $child->is_external || preg_match('/^https?:\/\//i', trim($child->url ?? '')));
+                                    $linkUrl = $isExt ? ($child->external_url ?? $child->url) : $child->url;
+                                    $targetAttr = $child->target ?: ($isExt ? '_blank' : '_self');
+                                @endphp
+                                <a href="{{ $linkUrl }}" target="{{ $targetAttr }}" class="block px-3 py-2 text-xs font-medium text-slate-600 hover:text-orange-600 hover:bg-orange-50 rounded-md">
                                     {{ $child->title }}
                                 </a>
                             @endforeach
                         </div>
                     </div>
                 @else
-                    <a href="{{ $menu->url }}" class="block px-3 py-2 text-sm font-bold text-slate-800 hover:bg-orange-50 rounded-lg">
+                    @php
+                        $isExt = ($menu->menu_type === 'external_link' || $menu->is_external || preg_match('/^https?:\/\//i', trim($menu->url ?? '')));
+                        $linkUrl = $isExt ? ($menu->external_url ?? $menu->url) : $menu->url;
+                        $targetAttr = $menu->target ?: ($isExt ? '_blank' : '_self');
+                    @endphp
+                    <a href="{{ $linkUrl }}" target="{{ $targetAttr }}" class="block px-3 py-2 text-sm font-bold text-slate-800 hover:bg-orange-50 rounded-lg">
                         {{ $menu->title }}
                     </a>
                 @endif
@@ -191,24 +269,6 @@
             @endauth
         </div>
     </header>
-
-    <!-- Emergency Warning Status Ticker -->
-    <div class="bg-slate-900 text-white text-xs py-2.5 px-4 border-b border-slate-800">
-        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-            <div class="flex items-center gap-2 font-bold text-amber-400">
-                <i class="fas fa-exclamation-triangle text-sm animate-bounce"></i>
-                <span class="uppercase tracking-wider">Status Kebencanaan Daerah:</span>
-            </div>
-            <div class="flex flex-wrap gap-2">
-                <span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 font-semibold text-[11px]">
-                    🌋 Gunung Bromo: <strong>Waspada (Level II)</strong>
-                </span>
-                <span class="px-2.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/40 text-blue-300 font-semibold text-[11px]">
-                    🌧️ Cuaca Ekstrem: <strong>Waspada Hujan Lebat</strong>
-                </span>
-            </div>
-        </div>
-    </div>
 
     <!-- Main Content Area -->
     <main class="flex-grow">
@@ -243,6 +303,39 @@
                             <h2 class="text-lg sm:text-xl text-orange-100 font-medium leading-relaxed max-w-xl">
                                 {{ $slide->subtitle }}
                             </h2>
+
+                            <!-- Hero CTA Action Buttons (SP4N Lapor & Hubungi Kami) -->
+                            @php
+                                $sp4nUrl = $settings['hero_sp4n_url'] ?? ($settings['sp4n_lapor_url'] ?? 'https://www.lapor.go.id/');
+                                $sp4nTarget = $settings['hero_sp4n_target'] ?? '_blank';
+                                $sp4nStatus = $settings['hero_sp4n_status'] ?? 'aktif';
+
+                                $contactUrl = $settings['hero_contact_url'] ?? ($settings['whatsapp_url'] ?? 'https://wa.me/628123456789');
+                                $contactTarget = $settings['hero_contact_target'] ?? '_blank';
+                                $contactStatus = $settings['hero_contact_status'] ?? 'aktif';
+                            @endphp
+
+                            @if(($sp4nStatus === 'aktif' || $sp4nStatus == '1') || ($contactStatus === 'aktif' || $contactStatus == '1'))
+                                <div class="pt-3 flex flex-wrap items-center gap-3.5 z-20">
+                                    <!-- Button 1: SP4N Lapor -->
+                                    @if($sp4nStatus === 'aktif' || $sp4nStatus == '1')
+                                        <a href="{{ $sp4nUrl }}" target="{{ $sp4nTarget }}" rel="noopener noreferrer" 
+                                           class="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white font-extrabold text-xs sm:text-sm shadow-xl shadow-orange-600/30 transition-all transform hover:scale-105 border border-orange-400/40">
+                                            <i class="fas fa-bullhorn text-sm text-amber-200"></i>
+                                            <span>SP4N Lapor</span>
+                                        </a>
+                                    @endif
+
+                                    <!-- Button 2: Hubungi Kami / WhatsApp -->
+                                    @if($contactStatus === 'aktif' || $contactStatus == '1')
+                                        <a href="{{ $contactUrl }}" target="{{ $contactTarget }}" rel="noopener noreferrer" 
+                                           class="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm shadow-xl shadow-emerald-600/30 transition-all transform hover:scale-105 border border-emerald-400/40">
+                                            <i class="fab fa-whatsapp text-base text-emerald-200"></i>
+                                            <span>Hubungi Kami</span>
+                                        </a>
+                                    @endif
+                                </div>
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -263,29 +356,6 @@
                             class="h-2.5 rounded-full transition-all duration-300"
                             :class="activeSlide === {{ $index }} ? 'w-8 bg-orange-500' : 'w-2.5 bg-white/40 hover:bg-white/70'"></button>
                 @endforeach
-            </div>
-        </section>
-
-        <!-- LAPOR BENCANA DARURAT BANNER (Tepat di atas Informasi Terbaru) -->
-        <section class="bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700 py-6 px-4 sm:px-6 lg:px-8 shadow-md relative z-20">
-            <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-white">
-                <div class="flex items-center gap-4 text-center sm:text-left">
-                    <div class="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white text-2xl shadow-inner shrink-0">
-                        <i class="fas fa-bullhorn animate-pulse"></i>
-                    </div>
-                    <div>
-                        <h3 class="text-lg sm:text-xl font-extrabold tracking-tight">Lapor Bencana & Kejadian Darurat</h3>
-                        <p class="text-xs text-orange-100 font-medium">Laporkan kejadian bencana di sekitar Anda secara cepat kepada Pusdalops BPBD Kabupaten Probolinggo</p>
-                    </div>
-                </div>
-                
-                <div class="shrink-0 w-full sm:w-auto text-center">
-                    <a href="{{ route('survey.form') }}" 
-                       class="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-full bg-white hover:bg-orange-50 text-orange-600 font-extrabold text-sm shadow-xl hover:shadow-2xl transition-all transform hover:-translate-y-0.5 border border-white">
-                        <i class="fas fa-bullhorn text-orange-600"></i>
-                        Lapor Bencana Darurat
-                    </a>
-                </div>
             </div>
         </section>
 
@@ -453,17 +523,12 @@
 
                 <!-- Col 2: Survey Link (3 cols) -->
                 <div class="lg:col-span-3 space-y-3">
-                    <h4 class="text-xs font-bold text-white uppercase tracking-wider border-l-2 border-orange-500 pl-2">Links Survey SKM</h4>
+                    <h4 class="text-xs font-bold text-white uppercase tracking-wider border-l-2 border-orange-500 pl-2">LINK SURVEI</h4>
                     <div class="space-y-2">
-                        <a href="{{ route('survey.form') }}" class="inline-block group">
+                        <a href="{{ $settings['survey_url'] ?? 'https://sukma.jatimprov.go.id/' }}" target="_blank" rel="noopener noreferrer" class="inline-block group" title="Klik untuk membuka Link Survei">
                             <img src="{{ $settings['qr_code_survey'] ?? 'https://diskominfo.probolinggokab.go.id/backend/gambar/qr_code_kominfo.png' }}" 
-                                 alt="QR Survey" class="h-28 w-28 object-contain rounded-lg border border-slate-700 bg-white p-1 group-hover:scale-105 transition-transform duration-200">
+                                 alt="QR Code Link Survei" class="h-28 w-28 object-contain rounded-lg border border-slate-700 bg-white p-1 group-hover:scale-105 transition-transform duration-200 shadow-sm">
                         </a>
-                        <div>
-                            <a href="{{ route('survey.form') }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-[11px] shadow-sm transition-all">
-                                <i class="fas fa-pen-to-square"></i> Isi Survei SKM Online
-                            </a>
-                        </div>
                     </div>
                 </div>
 
@@ -484,7 +549,7 @@
 
             <!-- Bottom Copyright & Back To Top -->
             <div class="pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-4">
-                <p>{{ $settings['copyright_text'] ?? 'BPBD - Kabupaten Probolinggo © 2026. All Rights Reserved' }}</p>
+                <p>{{ $settings['copyright_text'] ?? 'BPBD - Kabupaten Probolinggo 2026. All Rights Reserved' }}</p>
                 <div class="flex items-center gap-4">
                     <a href="{{ route('login') }}" class="text-slate-400 hover:text-orange-400 font-medium flex items-center gap-1 transition-colors">
                         <i class="fas fa-lock text-[10px]"></i> Admin Login

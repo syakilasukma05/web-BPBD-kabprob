@@ -3,7 +3,7 @@
 @section('page_title', 'Kelola Widget Sidebar Homepage')
 
 @section('content')
-<div class="space-y-6" x-data="{ showModal: false, editMode: false, currentWidget: {} }">
+<div class="space-y-6" x-data="{ showModal: {{ isset($widgetItem) ? 'true' : 'false' }}, editMode: {{ isset($widgetItem) ? 'true' : 'false' }}, currentWidget: {{ isset($widgetItem) ? json_encode($widgetItem, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) : '{}' }} }">
     
     <div class="flex justify-between items-center">
         <div>
@@ -45,8 +45,9 @@
                             </span>
                         </td>
                         <td class="px-6 py-4 text-right space-x-1">
-                            <button @click="showModal = true; editMode = true; currentWidget = {{ json_encode($widget) }}" 
-                                    class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"><i class="fas fa-edit"></i></button>
+                            <a href="{{ route('admin.widgets.edit', preg_replace('/[\"\']/', '', $widget->id)) }}" 
+                               @click.prevent="showModal = true; editMode = true; currentWidget = {{ json_encode($widget, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) }}" 
+                               class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition inline-block" title="Edit Widget"><i class="fas fa-edit"></i></a>
                             <form action="{{ route('admin.widgets.destroy', $widget->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus widget ini?')">
                                 @csrf
                                 @method('DELETE')
@@ -70,7 +71,7 @@
             </div>
 
             <!-- Scrollable Form Body -->
-            <form :action="editMode ? '{{ url('admin/widgets') }}/' + currentWidget.id : '{{ route('admin.widgets.store') }}'" method="POST" enctype="multipart/form-data" class="flex flex-col flex-1 overflow-hidden">
+            <form :action="editMode ? '{{ url('admin/widgets') }}/' + String(currentWidget.id || '').replace(/['&quot;\\]/g, '') : '{{ route('admin.widgets.store') }}'" method="POST" enctype="multipart/form-data" class="flex flex-col flex-1 overflow-hidden">
                 @csrf
                 <template x-if="editMode">
                     <input type="hidden" name="_method" value="PUT">
