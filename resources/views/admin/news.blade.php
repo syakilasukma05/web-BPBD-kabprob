@@ -7,15 +7,56 @@
     showModal: {{ isset($newsItem) ? 'true' : 'false' }}, 
     editMode: {{ isset($newsItem) ? 'true' : 'false' }}, 
     currentNews: {{ isset($newsItem) ? json_encode($newsItem, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) : '{}' }},
+    imageError: '',
     ckEditor: null,
+
+    validateNewsImageFile(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+        const ext = file.name.split('.').pop().toLowerCase();
+        const allowedExts = ['jpg', 'jpeg', 'png'];
+
+        if (!allowedTypes.includes(file.type) && !allowedExts.includes(ext)) {
+            this.imageError = 'Format file tidak didukung. Gunakan JPG, JPEG, atau PNG.';
+            event.target.value = '';
+            return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            this.imageError = 'Ukuran file gambar terlalu besar. Maksimum 5 MB.';
+            event.target.value = '';
+            return;
+        }
+
+        this.imageError = '';
+    },
 
     initNewsEditor(content = '') {
         this.$nextTick(() => {
             const clean = window.sanitizeCkHtml(content || '');
-            if (this.ckEditor) {
-                this.ckEditor.setData(clean);
-                return;
+            const textarea = document.getElementById('news_content_textarea');
+            if (textarea && textarea.ckeditorInstance) {
+                try {
+                    textarea.ckeditorInstance.setData(clean);
+                    this.ckEditor = textarea.ckeditorInstance;
+                    return;
+                } catch(e) {
+                    try { textarea.ckeditorInstance.destroy(); } catch(err) {}
+                    textarea.ckeditorInstance = null;
+                    this.ckEditor = null;
+                }
             }
+
+            if (this.ckEditor) {
+                try {
+                    this.ckEditor.setData(clean);
+                    return;
+                } catch(e) {
+                    this.ckEditor = null;
+                }
+            }
+
             window.initStandardCKEditor('news_content_textarea', clean, (data) => {
                 this.currentNews.content = data;
             }).then(editor => {
@@ -27,16 +68,23 @@
     },
 
     openCreate() {
+        this.imageError = '';
         this.showModal = true;
         this.editMode = false;
-        this.currentNews = { category: 'Peringatan Dini', published_at: '{{ date('Y-m-d') }}' };
+        this.currentNews = { 
+            category: 'Peringatan Dini', 
+            published_at: '{{ date('Y-m-d') }}',
+            status: 'aktif',
+            order: {{ $nextOrder ?? 1 }}
+        };
         this.initNewsEditor('');
     },
 
     openEdit(newsData) {
+        this.imageError = '';
         this.showModal = true;
         this.editMode = true;
-        this.currentNews = Object.assign({}, newsData);
+        this.currentNews = Object.assign({ status: 'aktif', order: 1 }, newsData);
         this.initNewsEditor(this.currentNews.content || '');
     }
 }" x-init="
@@ -65,6 +113,7 @@
                     <th class="px-6 py-4">Judul Berita</th>
                     <th class="px-6 py-4">Kategori</th>
                     <th class="px-6 py-4">Tanggal Publish</th>
+                    <th class="px-6 py-4">Status</th>
                     <th class="px-6 py-4">Views</th>
                     <th class="px-6 py-4 text-right">Aksi</th>
                 </tr>
@@ -85,6 +134,17 @@
                         </td>
                         <td class="px-6 py-4 text-slate-500 font-medium">
                             {{ optional($news->published_at)->format('d M Y') }}
+                        </td>
+                        <td class="px-6 py-4">
+                            @if(($news->status ?? 'aktif') === 'nonaktif')
+                                <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                                    <i class="fas fa-eye-slash text-[9px] text-slate-400"></i> Nonaktif
+                                </span>
+                            @else
+                                <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
+                                    <i class="fas fa-check-circle text-[9px] text-emerald-600"></i> Aktif
+                                </span>
+                            @endif
                         </td>
                         <td class="px-6 py-4 text-slate-600 font-bold">
                             {{ $news->views }}
@@ -108,14 +168,22 @@
         </div>
     </div>
 
-    <!-- Modal Form (Add / Edit News) -->
-    <div x-show="showModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
-        <div class="bg-white rounded-2xl max-w-3xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh] my-auto">
+    <!-- Modal Form (Add / Edit News) - FULL SCREEN MODAL -->
+    <div x-show="showModal" x-cloak class="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-md flex flex-col justify-between overflow-hidden">
+        <div class="bg-white w-full h-full flex flex-col overflow-hidden">
             
             <!-- Fixed Header -->
-            <div class="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-white shrink-0">
-                <h3 class="font-bold text-slate-800 text-sm" x-text="editMode ? 'Edit Berita & Artikel' : 'Publish Berita Baru'"></h3>
-                <button @click="showModal = false" class="text-slate-400 hover:text-slate-600 transition"><i class="fas fa-times"></i></button>
+            <div class="flex justify-between items-center px-6 py-4 border-b border-slate-200 bg-white shrink-0 shadow-xs">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-sm">
+                        <i class="fas fa-newspaper"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-extrabold text-slate-800 text-base" x-text="editMode ? 'Edit Berita & Artikel' : 'Publish Berita Baru'"></h3>
+                        <p class="text-[11px] text-slate-500">Isi formulir berita di bawah ini untuk dipublikasikan ke portal publik BPBD.</p>
+                    </div>
+                </div>
+                <button type="button" @click="showModal = false" class="p-2 text-slate-400 hover:text-slate-700 transition rounded-xl hover:bg-slate-100"><i class="fas fa-times text-xl"></i></button>
             </div>
 
             <!-- Scrollable Form Body -->
@@ -125,57 +193,114 @@
                     <input type="hidden" name="_method" value="PUT">
                 </template>
                 
-                <div class="p-6 space-y-4 text-xs overflow-y-auto flex-1">
+                <div class="p-6 sm:p-8 space-y-6 text-xs overflow-y-auto flex-1 max-w-5xl mx-auto w-full">
+                    <!-- Judul Berita -->
                     <div>
-                        <label class="block font-bold text-slate-700 mb-1">Judul Berita</label>
-                        <input type="text" name="title" required x-model="currentNews.title" placeholder="Judul berita terbaru..." class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:outline-none">
+                        <label class="block font-bold text-slate-700 mb-1.5 text-xs">Judul Berita <span class="text-rose-500">*</span></label>
+                        <input type="text" name="title" required x-model="currentNews.title" placeholder="Judul berita terbaru..." class="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:outline-none font-bold text-slate-800 text-sm">
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
+                    <!-- Kategori, Tanggal Publish, Nomor Urut -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <!-- Kategori (Combobox Manual + List) -->
                         <div>
-                            <label class="block font-bold text-slate-700 mb-1">Kategori</label>
-                            <select name="category" x-model="currentNews.category" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:outline-none">
-                                <option value="Peringatan Dini">Peringatan Dini</option>
-                                <option value="Tanggap Darurat">Tanggap Darurat</option>
-                                <option value="Mitigasi Bencana">Mitigasi Bencana</option>
-                                <option value="Kegiatan Posko">Kegiatan Posko</option>
-                            </select>
+                            <label class="block font-bold text-slate-700 mb-1.5">Kategori Berita <span class="text-rose-500">*</span></label>
+                            <input type="text" 
+                                   name="category" 
+                                   list="news_category_datalist" 
+                                   required 
+                                   x-model="currentNews.category" 
+                                   placeholder="Ketik atau pilih kategori..." 
+                                   class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:outline-none bg-white font-medium text-slate-800 text-xs">
+                            <datalist id="news_category_datalist">
+                                @foreach($categories as $cat)
+                                    <option value="{{ $cat }}"></option>
+                                @endforeach
+                            </datalist>
+                            <p class="text-[10px] text-slate-400 mt-1">Bisa diketik manual untuk membuat kategori baru.</p>
                         </div>
+
+                        <!-- Tanggal Publish -->
                         <div>
-                            <label class="block font-bold text-slate-700 mb-1">Tanggal Publish</label>
-                            <input type="date" name="published_at" x-model="currentNews.published_at" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:outline-none">
+                            <label class="block font-bold text-slate-700 mb-1.5">Tanggal Publish</label>
+                            <input type="date" name="published_at" x-model="currentNews.published_at" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:outline-none bg-white font-medium text-slate-800 text-xs">
+                        </div>
+
+                        <!-- Nomor Urut -->
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1.5">Nomor Urut</label>
+                            <input type="number" name="order" min="1" x-model="currentNews.order" placeholder="1" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:outline-none bg-white font-bold text-slate-800 text-xs">
+                            <p class="text-[10px] text-slate-400 mt-1">Angka lebih kecil tampil lebih atas pada portal.</p>
                         </div>
                     </div>
 
-                    <!-- Thumbnail Gambar Berita (Upload & URL) -->
-                    <div class="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                        <label class="block font-bold text-slate-700">Gambar Thumbnail Berita</label>
-                        <div>
-                            <span class="text-[10px] text-slate-500 font-semibold block mb-1">Opsi 1: Upload File Gambar Dari Perangkat</span>
-                            <input type="file" name="image_file" accept="image/*" class="w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-orange-100 file:text-orange-700 hover:file:bg-orange-200 cursor-pointer">
-                        </div>
-                        <div class="pt-1 border-t border-slate-200">
-                            <span class="text-[10px] text-slate-500 font-semibold block mb-1">Opsi 2: Atau Pakai Link / URL Gambar (Web)</span>
-                            <input type="text" name="image_url" x-model="currentNews.image_url" placeholder="https://..." class="w-full px-3 py-1.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:outline-none bg-white">
+                    <!-- Status Tampilan -->
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1.5">Status Tampilan</label>
+                        <div class="flex items-center gap-6 pt-1 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                            <label class="flex items-center gap-2 cursor-pointer font-bold text-slate-700">
+                                <input type="radio" name="status" value="aktif" x-model="currentNews.status" class="text-orange-600 focus:ring-orange-500">
+                                <span class="text-emerald-700 font-extrabold flex items-center gap-1.5">
+                                    <i class="fas fa-check-circle text-emerald-600"></i> Aktif (Tampil di Website Publik)
+                                </span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer font-bold text-slate-700">
+                                <input type="radio" name="status" value="nonaktif" x-model="currentNews.status" class="text-orange-600 focus:ring-orange-500">
+                                <span class="text-slate-500 font-extrabold flex items-center gap-1.5">
+                                    <i class="fas fa-eye-slash text-slate-400"></i> Nonaktif (Disimpan Sebagai Draf)
+                                </span>
+                            </label>
                         </div>
                     </div>
 
+                    <!-- Thumbnail Gambar Berita (Hanya Upload File Gambar) -->
+                    <div class="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                        <label class="block font-bold text-slate-700 text-xs flex items-center justify-between">
+                            <span>Upload File Gambar Thumbnail</span>
+                            <span class="text-[10px] text-orange-600 font-semibold">Format JPG, JPEG, PNG (Max 5MB)</span>
+                        </label>
+                        
+                        <template x-if="imageError">
+                            <div class="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <i class="fas fa-exclamation-triangle text-rose-600"></i>
+                                    <span x-text="imageError"></span>
+                                </div>
+                                <button type="button" @click="imageError = ''" class="text-rose-400 hover:text-rose-600"><i class="fas fa-times"></i></button>
+                            </div>
+                        </template>
+
+                        <input type="file" name="image_file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" @change="validateNewsImageFile($event)"
+                               class="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-orange-100 file:text-orange-700 hover:file:bg-orange-200 cursor-pointer bg-white border border-slate-300 rounded-xl p-1">
+                        <p class="text-[10px] text-slate-400">Pilih file gambar dari perangkat dengan format JPG, JPEG, atau PNG.</p>
+
+                        <!-- Preview Thumbnail Existing -->
+                        <template x-if="editMode && currentNews.image_url">
+                            <div class="pt-3 border-t border-slate-200 flex items-center gap-4">
+                                <span class="text-[11px] text-slate-600 font-bold">Thumbnail Saat Ini:</span>
+                                <img :src="currentNews.image_url" class="h-14 w-20 object-cover rounded-xl border border-slate-300 shadow-xs">
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- Link Target / Sumber Berita -->
                     <div>
                         <label class="block font-bold text-slate-700 mb-1">Link Target / Sumber Berita (Opsional)</label>
-                        <input type="text" name="link_url" x-model="currentNews.link_url" placeholder="Contoh: https://detik.com/... atau https://instagram.com/..." class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:outline-none font-mono text-[11px]">
+                        <input type="text" name="link_url" x-model="currentNews.link_url" placeholder="Contoh: https://detik.com/... atau https://instagram.com/..." class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:outline-none font-mono text-xs">
                         <p class="text-[10px] text-slate-400 mt-1">*Jika diisi, pengunjung yang mengklik berita akan diarahkan langsung ke link ini.</p>
                     </div>
 
+                    <!-- CKEditor Content -->
                     <div>
-                        <label class="block font-bold text-slate-700 mb-1">Isi Berita (CKEditor 5 Visual Editor)</label>
-                        <textarea id="news_content_textarea" name="content" x-model="currentNews.content" class="w-full min-h-[300px]"></textarea>
+                        <label class="block font-bold text-slate-700 mb-1.5">Isi Berita (CKEditor 5 Visual Editor)</label>
+                        <textarea id="news_content_textarea" name="content" x-model="currentNews.content" class="w-full min-h-[350px]"></textarea>
                     </div>
                 </div>
 
                 <!-- Fixed Footer with Batal and Simpan Buttons -->
-                <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex justify-end gap-2 shrink-0">
-                    <button type="button" @click="showModal = false" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl transition">Batal</button>
-                    <button type="submit" class="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl shadow-md transition flex items-center gap-2">
+                <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3 shrink-0">
+                    <button type="button" @click="showModal = false" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-xl transition">Batal</button>
+                    <button type="submit" class="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-2">
                         <i class="fas fa-save"></i> Simpan Artikel
                     </button>
                 </div>

@@ -26,6 +26,26 @@
         }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        .prose ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; text-align: left; }
+        .prose ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 1rem; text-align: left; }
+        .prose h1 { font-size: 1.875rem; font-weight: 800; margin-top: 1.5rem; margin-bottom: 0.75rem; color: #1e293b; text-align: left; }
+        .prose h2 { font-size: 1.5rem; font-weight: 800; margin-top: 1.25rem; margin-bottom: 0.75rem; color: #1e293b; text-align: left; }
+        .prose h3 { font-size: 1.25rem; font-weight: 700; margin-top: 1rem; margin-bottom: 0.5rem; color: #334155; text-align: left; }
+        .prose p { margin-bottom: 0.85rem; line-height: 1.7; }
+        .prose table { width: 100%; border-collapse: collapse; margin-bottom: 1.25rem; }
+        .prose table td, .prose table th { border: 1px solid #cbd5e1; padding: 0.6rem 0.85rem; text-align: left; }
+        .prose table th { background-color: #f8fafc; font-weight: 700; }
+        .prose blockquote { border-left: 4px solid #ea580c; padding-left: 1rem; font-style: italic; color: #475569; margin-bottom: 1.25rem; }
+        .prose img { max-width: 100%; height: auto; border-radius: 0.75rem; margin: 1rem auto; }
+        .prose figure.image { display: inline-block; max-width: 100%; margin: 1rem 0; }
+        .prose figure.image img { margin: 0; }
+        .prose figure.image figcaption { font-size: 0.75rem; color: #64748b; text-align: center; margin-top: 0.35rem; }
+        .text-align-left, .prose .text-align-left { text-align: left !important; }
+        .text-align-center, .prose .text-align-center { text-align: center !important; }
+        .text-align-right, .prose .text-align-right { text-align: right !important; }
+        .text-align-justify, .prose .text-align-justify { text-align: justify !important; }
+    </style>
 </head>
 <body class="bg-white text-slate-700 font-sans antialiased min-h-screen flex flex-col selection:bg-orange-600 selection:text-white"
       x-data="{ mobileMenu: false, pdfModalOpen: false, currentPdfUrl: '', currentPdfTitle: '' }">
@@ -40,7 +60,7 @@
                     <a href="{{ route('home') }}" class="group flex items-center gap-3">
                         <img src="{{ (!empty($settings['logo_frontend']) && !str_contains($settings['logo_frontend'], 'diskominfo.probolinggokab.go.id')) ? $settings['logo_frontend'] : asset('images/logo-bpbd.svg') }}" 
                              alt="Logo Instansi" 
-                             class="h-11 sm:h-12 w-auto object-contain transition-transform group-hover:scale-105 duration-200">
+                             class="h-9 sm:h-10 w-auto object-contain transition-transform group-hover:scale-105 duration-200">
                         <div class="flex flex-col justify-center leading-tight">
                             <span class="font-extrabold text-xs sm:text-sm md:text-base text-[#1b263b] tracking-tight group-hover:text-[#375e47] transition-colors uppercase">
                                 BPBD KABUPATEN PROBOLINGGO
@@ -55,7 +75,7 @@
                 <!-- Middle: Navigation Menu (HOME, PROFIL, LAYANAN, DOKUMEN, INFORMASI, HUBUNGI, LOGIN) -->
                 <nav class="hidden lg:flex items-center space-x-4 xl:space-x-6">
                     @foreach($navMenus as $menu)
-                        @if(strtoupper($menu->title) === 'LOGIN')
+                        @if(in_array(strtoupper($menu->title), ['LOGIN']))
                             @continue
                         @endif
                         @if($menu->children && count($menu->children) > 0)
@@ -79,11 +99,13 @@
                                      class="absolute left-0 mt-1 w-64 rounded-xl bg-white shadow-xl ring-1 ring-black/5 border border-slate-100 py-2 z-50 overflow-hidden">
                                     @foreach($menu->children as $child)
                                         @php
+                                            $isSpanLapor = \Illuminate\Support\Str::contains(strtolower($child->title ?? ''), ['sp4n', 'lapor']);
                                             $isExt = ($child->menu_type === 'external_link' || $child->is_external || preg_match('/^https?:\/\//i', trim($child->url ?? '')));
                                             $linkUrl = $isExt ? ($child->external_url ?? $child->url) : $child->url;
-                                            $targetAttr = $child->target ?: ($isExt ? '_blank' : '_self');
+                                            $targetAttr = $isSpanLapor ? '_blank' : ($child->target ?: ($isExt ? '_blank' : '_self'));
+                                            $relAttr = ($isSpanLapor || $targetAttr === '_blank') ? 'rel="noopener noreferrer"' : '';
                                         @endphp
-                                        <a href="{{ $linkUrl }}" target="{{ $targetAttr }}"
+                                        <a href="{{ $linkUrl }}" target="{{ $targetAttr }}" {!! $relAttr !!}
                                            onmouseenter="speakText('{{ e($child->title) }}')"
                                            class="block px-4 py-2.5 text-xs text-slate-700 hover:bg-[#375e47] hover:text-white transition-colors duration-150 font-semibold">
                                             {{ $child->title }}
@@ -113,7 +135,7 @@
                     <div class="hidden xl:block flex-shrink-0">
                         <img src="{{ $settings['logo_berakhlak'] ?? 'https://diskominfo.probolinggokab.go.id/frontend/images/img-berakhlak.png' }}" 
                              alt="BerAKHLAK" 
-                             class="h-10 w-auto object-contain">
+                             class="h-7 sm:h-8 w-auto object-contain">
                     </div>
 
                     <!-- Mobile Menu Button -->

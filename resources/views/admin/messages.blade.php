@@ -49,7 +49,7 @@
                             </form>
                         </td>
                         <td class="px-6 py-4 text-right">
-                            <form action="{{ route('admin.messages.destroy', $msg->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus laporan ini?')">
+                            <form action="{{ route('admin.messages.destroy', $msg->id) }}" method="POST" class="inline" data-confirm="Apakah Anda yakin ingin menghapus laporan ini?">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition"><i class="fas fa-trash-alt"></i></button>

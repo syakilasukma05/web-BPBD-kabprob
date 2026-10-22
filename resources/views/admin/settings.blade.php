@@ -50,71 +50,248 @@
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 
                 <!-- Logo Topbar Frontend (Kiri Header) -->
-                <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-3 flex flex-col justify-between">
+                <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-3 flex flex-col justify-between"
+                     x-data="{
+                         logoError: '',
+                         previewUrl: '{{ !empty($settings['logo_frontend']) ? $settings['logo_frontend'] : asset('images/logo-bpbd.svg') }}',
+                         validateFile(event) {
+                             const file = event.target.files[0];
+                             this.logoError = '';
+                             if (!file) return;
+
+                             const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+                             const allowedExts = ['png', 'jpg', 'jpeg'];
+                             const ext = file.name.split('.').pop().toLowerCase();
+
+                             if (!allowedTypes.includes(file.type.toLowerCase()) && !allowedExts.includes(ext)) {
+                                 this.logoError = 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.';
+                                 event.target.value = '';
+                                 return;
+                             }
+
+                             const reader = new FileReader();
+                             reader.onload = (e) => {
+                                 this.previewUrl = e.target.result;
+                             };
+                             reader.readAsDataURL(file);
+                         }
+                     }">
                     <div>
                         <label class="block font-bold text-slate-700 mb-1">Logo Instansi (Kiri Header)</label>
                         <p class="text-[10px] text-slate-500 mb-2">Tampil di navigasi paling atas sebelah kiri</p>
                         
                         <div class="h-16 w-full bg-white rounded-xl border border-slate-200 p-2 flex items-center justify-center mb-3">
-                            <img src="{{ !empty($settings['logo_frontend']) ? $settings['logo_frontend'] : asset('images/logo-bpbd.svg') }}" 
+                            <img :src="previewUrl" 
                                  alt="Logo Frontend Preview" class="max-h-full max-w-full object-contain">
                         </div>
                         
                         <div>
-                            <span class="text-[10px] text-slate-500 font-semibold block mb-1">Upload Logo Baru (PNG/SVG):</span>
-                            <input type="file" name="logo_frontend_file" accept="image/*" class="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-100 file:text-emerald-700 cursor-pointer">
+                            <span class="text-[10px] text-slate-500 font-semibold block mb-1">Upload Logo Baru (JPG / PNG):</span>
+                            <input type="file" 
+                                   name="logo_frontend_file" 
+                                   accept=".jpg,.jpeg,.png,image/jpeg,image/png" 
+                                   @change="validateFile($event)"
+                                   class="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-100 file:text-emerald-700 cursor-pointer">
+                            
+                            <p x-show="logoError" x-cloak class="text-xs font-bold text-rose-600 mt-1.5 flex items-center gap-1 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                                <span x-text="logoError"></span>
+                            </p>
+                            @if($errors->has('logo_frontend_file'))
+                                <p class="text-xs font-bold text-rose-600 mt-1.5 flex items-center gap-1 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                                    <span>{{ $errors->first('logo_frontend_file') }}</span>
+                                </p>
+                            @endif
                         </div>
                     </div>
                     <div class="pt-2 border-t border-slate-200">
                         <span class="text-[10px] text-slate-500 font-semibold block mb-1">Atau Gunakan Link / URL Gambar:</span>
-                        <input type="text" name="logo_frontend" value="{{ $settings['logo_frontend'] ?? '' }}" placeholder="https://.../logo.png" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white font-mono text-[10px]">
+                        <input type="text" name="logo_frontend" value="{{ $settings['logo_frontend'] ?? '' }}" @input="if(!logoError) previewUrl = $event.target.value" placeholder="https://.../logo.png" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white font-mono text-[10px]">
                     </div>
                 </div>
 
                 <!-- Logo BerAKHLAK Header (Kanan Header) -->
-                <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-3 flex flex-col justify-between">
+                <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-3 flex flex-col justify-between"
+                     x-data="{
+                         logoError: '',
+                         previewUrl: '{{ $settings['logo_berakhlak'] ?? 'https://diskominfo.probolinggokab.go.id/frontend/images/img-berakhlak.png' }}',
+                         validateFile(event) {
+                             const file = event.target.files[0];
+                             this.logoError = '';
+                             if (!file) return;
+
+                             const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+                             const allowedExts = ['png', 'jpg', 'jpeg'];
+                             const ext = file.name.split('.').pop().toLowerCase();
+
+                             if (!allowedTypes.includes(file.type.toLowerCase()) && !allowedExts.includes(ext)) {
+                                 this.logoError = 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.';
+                                 event.target.value = '';
+                                 return;
+                             }
+
+                             const reader = new FileReader();
+                             reader.onload = (e) => {
+                                 this.previewUrl = e.target.result;
+                             };
+                             reader.readAsDataURL(file);
+                         }
+                     }">
                     <div>
                         <label class="block font-bold text-slate-700 mb-1">Logo BerAKHLAK (Kanan Header)</label>
                         <p class="text-[10px] text-slate-500 mb-2">Tampil di navigasi paling atas sebelah kanan</p>
                         
                         <div class="h-16 w-full bg-white rounded-xl border border-slate-200 p-2 flex items-center justify-center mb-3">
-                            <img src="{{ $settings['logo_berakhlak'] ?? 'https://diskominfo.probolinggokab.go.id/frontend/images/img-berakhlak.png' }}" 
+                            <img :src="previewUrl" 
                                  alt="Logo BerAKHLAK Preview" class="max-h-full max-w-full object-contain">
                         </div>
                         
                         <div>
-                            <span class="text-[10px] text-slate-500 font-semibold block mb-1">Upload Logo Baru (PNG/SVG):</span>
-                            <input type="file" name="logo_berakhlak_file" accept="image/*" class="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-100 file:text-emerald-700 cursor-pointer">
+                            <span class="text-[10px] text-slate-500 font-semibold block mb-1">Upload Logo Baru (JPG / PNG):</span>
+                            <input type="file" 
+                                   name="logo_berakhlak_file" 
+                                   accept=".jpg,.jpeg,.png,image/jpeg,image/png" 
+                                   @change="validateFile($event)"
+                                   class="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-100 file:text-emerald-700 cursor-pointer">
+                            
+                            <p x-show="logoError" x-cloak class="text-xs font-bold text-rose-600 mt-1.5 flex items-center gap-1 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                                <span x-text="logoError"></span>
+                            </p>
+                            @if($errors->has('logo_berakhlak_file'))
+                                <p class="text-xs font-bold text-rose-600 mt-1.5 flex items-center gap-1 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                                    <span>{{ $errors->first('logo_berakhlak_file') }}</span>
+                                </p>
+                            @endif
                         </div>
                     </div>
                     <div class="pt-2 border-t border-slate-200">
                         <span class="text-[10px] text-slate-500 font-semibold block mb-1">Atau Gunakan Link / URL Gambar:</span>
-                        <input type="text" name="logo_berakhlak" value="{{ $settings['logo_berakhlak'] ?? '' }}" placeholder="https://.../berakhlak.png" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white font-mono text-[10px]">
+                        <input type="text" name="logo_berakhlak" value="{{ $settings['logo_berakhlak'] ?? '' }}" @input="if(!logoError) previewUrl = $event.target.value" placeholder="https://.../berakhlak.png" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white font-mono text-[10px]">
                     </div>
                 </div>
 
                 <!-- Logo Backend / Footer -->
-                <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-3 flex flex-col justify-between">
+                <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-3 flex flex-col justify-between"
+                     x-data="{
+                         logoError: '',
+                         previewUrl: '{{ $settings['logo_backend'] ?? 'https://bpbd.probolinggokab.go.id/wp-content/uploads/2021/04/logo-bpbd.png' }}',
+                         validateFile(event) {
+                             const file = event.target.files[0];
+                             this.logoError = '';
+                             if (!file) return;
+
+                             const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+                             const allowedExts = ['png', 'jpg', 'jpeg'];
+                             const ext = file.name.split('.').pop().toLowerCase();
+
+                             if (!allowedTypes.includes(file.type.toLowerCase()) && !allowedExts.includes(ext)) {
+                                 this.logoError = 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.';
+                                 event.target.value = '';
+                                 return;
+                             }
+
+                             const reader = new FileReader();
+                             reader.onload = (e) => {
+                                 this.previewUrl = e.target.result;
+                             };
+                             reader.readAsDataURL(file);
+                         }
+                     }">
                     <div>
                         <label class="block font-bold text-slate-700 mb-1">Logo Footer / Admin</label>
                         <p class="text-[10px] text-slate-500 mb-2">Tampil di bagian footer bawah dan admin panel</p>
                         
                         <div class="h-16 w-full bg-white rounded-xl border border-slate-200 p-2 flex items-center justify-center mb-3">
-                            <img src="{{ $settings['logo_backend'] ?? 'https://bpbd.probolinggokab.go.id/wp-content/uploads/2021/04/logo-bpbd.png' }}" 
+                            <img :src="previewUrl" 
                                  alt="Logo Backend Preview" class="max-h-full max-w-full object-contain">
                         </div>
                         
                         <div>
-                            <span class="text-[10px] text-slate-500 font-semibold block mb-1">Upload Logo Baru (PNG/SVG):</span>
-                            <input type="file" name="logo_backend_file" accept="image/*" class="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-100 file:text-emerald-700 cursor-pointer">
+                            <span class="text-[10px] text-slate-500 font-semibold block mb-1">Upload Logo Baru (JPG / PNG):</span>
+                            <input type="file" 
+                                   name="logo_backend_file" 
+                                   accept=".jpg,.jpeg,.png,image/jpeg,image/png" 
+                                   @change="validateFile($event)"
+                                   class="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-100 file:text-emerald-700 cursor-pointer">
+                            
+                            <p x-show="logoError" x-cloak class="text-xs font-bold text-rose-600 mt-1.5 flex items-center gap-1 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                                <span x-text="logoError"></span>
+                            </p>
+                            @if($errors->has('logo_backend_file'))
+                                <p class="text-xs font-bold text-rose-600 mt-1.5 flex items-center gap-1 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                                    <span>{{ $errors->first('logo_backend_file') }}</span>
+                                </p>
+                            @endif
                         </div>
                     </div>
                     <div class="pt-2 border-t border-slate-200">
                         <span class="text-[10px] text-slate-500 font-semibold block mb-1">Atau Gunakan Link / URL Gambar:</span>
-                        <input type="text" name="logo_backend" value="{{ $settings['logo_backend'] ?? '' }}" placeholder="https://.../logo-footer.png" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white font-mono text-[10px]">
+                        <input type="text" name="logo_backend" value="{{ $settings['logo_backend'] ?? '' }}" @input="if(!logoError) previewUrl = $event.target.value" placeholder="https://.../logo-footer.png" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white font-mono text-[10px]">
                     </div>
                 </div>
 
+            </div>
+
+            <!-- Gambar Banner Header Atas (Top Header Banner) -->
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3"
+                 x-data="{
+                     bannerError: '',
+                     previewUrl: '{{ !empty($settings['top_header_banner']) ? $settings['top_header_banner'] : asset('images/top-banner-header.jpg') }}',
+                     validateFile(event) {
+                         const file = event.target.files[0];
+                         this.bannerError = '';
+                         if (!file) return;
+
+                         const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+                         const allowedExts = ['png', 'jpg', 'jpeg'];
+                         const ext = file.name.split('.').pop().toLowerCase();
+
+                         if (!allowedTypes.includes(file.type.toLowerCase()) && !allowedExts.includes(ext)) {
+                             this.bannerError = 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.';
+                             event.target.value = '';
+                             return;
+                         }
+
+                         const reader = new FileReader();
+                         reader.onload = (e) => {
+                             this.previewUrl = e.target.result;
+                         };
+                         reader.readAsDataURL(file);
+                     }
+                 }">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">Gambar Banner Header Atas (Top Header Banner)</label>
+                    <p class="text-[10px] text-slate-500 mb-2">Banner horizontal full-width yang tampil di posisi paling atas website publik (di atas navbar)</p>
+                    
+                    <div class="h-28 w-full bg-white rounded-xl border border-slate-200 p-1.5 flex items-center justify-center mb-3 overflow-hidden">
+                        <img :src="previewUrl" 
+                             alt="Banner Header Preview" class="max-h-full w-full object-cover rounded-lg">
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <span class="text-[10px] text-slate-500 font-semibold block mb-1">Upload File Banner Baru (JPG / PNG):</span>
+                            <input type="file" 
+                                   name="top_header_banner_file" 
+                                   accept=".jpg,.jpeg,.png,image/jpeg,image/png" 
+                                   @change="validateFile($event)"
+                                   class="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-100 file:text-emerald-700 cursor-pointer">
+                            
+                            <p x-show="bannerError" x-cloak class="text-xs font-bold text-rose-600 mt-1.5 flex items-center gap-1 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                                <span x-text="bannerError"></span>
+                            </p>
+                            @if($errors->has('top_header_banner_file'))
+                                <p class="text-xs font-bold text-rose-600 mt-1.5 flex items-center gap-1 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                                    <span>{{ $errors->first('top_header_banner_file') }}</span>
+                                </p>
+                            @endif
+                        </div>
+
+                        <div>
+                            <span class="text-[10px] text-slate-500 font-semibold block mb-1">Atau Gunakan Link / URL Gambar:</span>
+                            <input type="text" name="top_header_banner" value="{{ $settings['top_header_banner'] ?? '' }}" @input="if(!bannerError) previewUrl = $event.target.value" placeholder="https://.../banner-header.jpg" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white font-mono text-[10px]">
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Link Survey Settings -->

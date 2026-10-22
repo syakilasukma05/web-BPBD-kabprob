@@ -225,11 +225,31 @@
     },
 
     initCKEditor(content = '') {
+        const setEditorData = (editor, data) => {
+            if (!editor) return;
+            try {
+                editor.setData(data || '');
+            } catch(e) {
+                console.warn('CKEditor setData error:', e);
+            }
+        };
+
         this.$nextTick(() => {
-            const cleanContent = window.sanitizeCkHtml(this.decodeHtml(content || ''));
-            
-            if (this.ckEditor) {
-                this.ckEditor.setData(cleanContent);
+            const rawContent = (content !== undefined && content !== null) ? String(content) : (this.currentMenu.page_content || '');
+            const cleanContent = window.sanitizeCkHtml(this.decodeHtml(rawContent));
+            const textarea = document.getElementById('ckeditor_page_content');
+            if (textarea) {
+                textarea.value = cleanContent;
+            }
+
+            if (textarea && textarea.ckeditorInstance) {
+                this.ckEditor = textarea.ckeditorInstance;
+                setEditorData(this.ckEditor, cleanContent);
+                return;
+            }
+
+            if (this.ckEditor && typeof this.ckEditor.setData === 'function') {
+                setEditorData(this.ckEditor, cleanContent);
                 return;
             }
 
@@ -237,6 +257,7 @@
                 this.currentMenu.page_content = data;
             }).then(editor => {
                 this.ckEditor = editor;
+                setEditorData(editor, cleanContent);
             }).catch(err => {
                 console.warn('CKEditor init warning:', err);
             });
@@ -256,7 +277,9 @@
         this.currentMenu.documents = menuData.documents || [];
         this.currentMenu.links = menuData.links || [];
         this.resetLinkForm();
-        const cleanContent = this.decodeHtml(this.currentMenu.page_content || '');
+        
+        const rawContent = menuData.page_content || '';
+        const cleanContent = this.decodeHtml(rawContent);
         this.currentMenu.page_content = cleanContent;
         this.currentView = 'editor';
         this.activeTab = 1;
@@ -273,12 +296,25 @@
                 return;
             }
         }
-        if (this.ckEditor) {
-            const data = this.ckEditor.getData();
-            const el = document.getElementById('ckeditor_page_content');
-            if (el) el.value = data;
-            this.currentMenu.page_content = data;
+
+        const el = document.getElementById('ckeditor_page_content');
+        const editor = this.ckEditor || (el ? el.ckeditorInstance : null);
+
+        if (editor && typeof editor.getData === 'function') {
+            const data = editor.getData();
+            if (data && data.trim() !== '') {
+                if (el) el.value = data;
+                this.currentMenu.page_content = data;
+            } else if (this.currentMenu.page_content && this.currentMenu.page_content.trim() !== '') {
+                if (el) el.value = this.currentMenu.page_content;
+            } else {
+                if (el) el.value = '';
+                this.currentMenu.page_content = '';
+            }
+        } else if (el && this.currentMenu.page_content) {
+            el.value = this.currentMenu.page_content;
         }
+
         this.$nextTick(() => {
             const form = document.getElementById('cmsMenuEditorForm');
             if (form) form.submit();
@@ -357,12 +393,24 @@
                                         <div>
                                             <div class="flex items-center gap-2">
                                                 <span class="font-extrabold text-slate-800 text-xs">{{ $child->title }}</span>
-                                                @if($child->is_external)
+                                                @php
+                                                    $childTitleLower = strtolower($child->title ?? '');
+                                                    $isSpecialContentPage = \Illuminate\Support\Str::contains($childTitleLower, ['kajian risiko', 'krb', 'peringatan dini cuaca', 'bmkg', 'sp4n', 'lapor', 'kontak']);
+                                                    $hasContent = !empty(trim(strip_tags($child->page_content ?? ''))) 
+                                                        || !empty($child->image_url) 
+                                                        || (!empty($child->documents) && count($child->documents) > 0)
+                                                        || (!empty($child->links) && count($child->links) > 0);
+                                                @endphp
+                                                @if($child->is_external && !$isSpecialContentPage)
                                                     <span class="text-[9px] px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 font-bold border border-sky-200">Tautan Eksternal</span>
-                                                @elseif(!empty($child->page_content))
-                                                    <span class="text-[9px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-extrabold border border-emerald-200">Konten Terisi</span>
-                                                @elseif($child->is_editable_page)
-                                                    <span class="text-[9px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-medium border border-amber-200">Siap Diisi</span>
+                                                @elseif($hasContent)
+                                                    <span class="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-extrabold border border-emerald-200 inline-flex items-center gap-1">
+                                                        <i class="fas fa-check-circle text-[9px] text-emerald-600"></i> Konten Terisi
+                                                    </span>
+                                                @elseif($child->is_editable_page || $isSpecialContentPage)
+                                                    <span class="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-extrabold border border-amber-200 inline-flex items-center gap-1">
+                                                        <i class="fas fa-edit text-[9px] text-amber-600"></i> Siap Diisi
+                                                    </span>
                                                 @endif
                                             </div>
                                             <span class="text-[11px] text-slate-400 font-mono">({{ $child->url }})</span>
@@ -409,7 +457,7 @@
         </div>
 
         <!-- External Link Dedicated Form (If menu is external link type) -->
-        <template x-if="currentMenu.type === 'external' || currentMenu.is_external">
+        <div x-show="currentMenu.type === 'external' || currentMenu.is_external">
             <form id="cmsExternalMenuForm" :action="'{{ url('admin/menus') }}/' + String(currentMenu.id || '').replace(/['&quot;\\]/g, '')" method="POST" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
                 @csrf
                 <input type="hidden" name="_method" value="PUT">
@@ -475,16 +523,18 @@
                     </button>
                 </div>
             </form>
-        </template>
+        </div>
 
         <!-- Main CMS Form Container (Internal Page Editor) -->
-        <template x-if="currentMenu.type !== 'external' && !currentMenu.is_external">
+        <div x-show="currentMenu.type !== 'external' && !currentMenu.is_external">
             <form id="cmsMenuEditorForm" :action="'{{ url('admin/menus') }}/' + String(currentMenu.id || '').replace(/['&quot;\\]/g, '')" method="POST" enctype="multipart/form-data" class="space-y-6">
                 @csrf
                 <input type="hidden" name="_method" value="PUT">
                 <input type="hidden" name="title" x-model="currentMenu.title">
                 <input type="hidden" name="url" x-model="currentMenu.url">
                 <input type="hidden" name="type" value="internal">
+                <input type="hidden" name="parent_id" :value="currentMenu.parent_id || ''">
+                <input type="hidden" name="order" :value="currentMenu.order ?? 0">
 
             <!-- Tab Navigation Bar -->
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -519,7 +569,7 @@
                     </div>
 
                     <div>
-                        <textarea id="ckeditor_page_content" name="page_content" class="w-full min-h-[450px]"></textarea>
+                        <textarea id="ckeditor_page_content" name="page_content" :value="currentMenu.page_content" class="w-full min-h-[450px]"></textarea>
                     </div>
                 </div>
 
@@ -863,7 +913,7 @@
                 </div>
             </div>
         </form>
-        </template>
+        </div>
     </div>
 </div>
 @endsection

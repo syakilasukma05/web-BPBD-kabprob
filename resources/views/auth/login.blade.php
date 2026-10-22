@@ -98,6 +98,14 @@
                 <h1 class="text-2xl sm:text-3xl font-extrabold text-[#1e293b] tracking-tight">Login Admin</h1>
             </div>
 
+            <!-- Global Status Notification -->
+            @if(session('status'))
+                <div class="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2">
+                    <i class="fas fa-check-circle text-emerald-600 text-sm"></i>
+                    <span>{{ session('status') }}</span>
+                </div>
+            @endif
+
             <!-- Global Error Notification -->
             @if($errors->any())
                 <div class="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
@@ -126,11 +134,16 @@
                            class="w-full px-4 py-3 bg-[#f8fafc] border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#00a2ff] focus:bg-white focus:outline-none font-medium text-slate-800 text-sm placeholder:text-slate-400 transition">
                 </div>
 
-                <!-- 2. Password Field with Eye Toggle -->
+                <!-- 2. Password Field with Eye Toggle & Lupa Password Link -->
                 <div>
-                    <label class="block font-bold text-slate-700 mb-1.5 text-xs">
-                        Password
-                    </label>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="font-bold text-slate-700 text-xs">
+                            Password
+                        </label>
+                        <a href="{{ route('password.request') }}" class="text-[11px] font-bold text-[#00a2ff] hover:text-[#008de6] hover:underline transition">
+                            Lupa Password?
+                        </a>
+                    </div>
                     <div class="relative">
                         <input :type="showPassword ? 'text' : 'password'" 
                                name="password" 
@@ -200,15 +213,6 @@
                            x-model="captchaInput" 
                            placeholder="Masukkan kode captcha..." 
                            class="w-full px-4 py-3 bg-[#f8fafc] border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#00a2ff] focus:bg-white focus:outline-none font-medium text-slate-800 text-sm placeholder:text-slate-400 transition">
-                </div>
-
-                <!-- Quick Demo Credentials Info -->
-                <div class="bg-blue-50/70 p-3 rounded-lg border border-blue-100 text-[11px] text-blue-900 space-y-1">
-                    <p class="font-bold flex items-center gap-1"><i class="fas fa-info-circle text-blue-600"></i> Akun Demo Uji Coba Admin:</p>
-                    <div class="flex flex-wrap gap-2 pt-1">
-                        <button type="button" @click="email = 'admin@bpbd.probolinggokab.go.id'; password='BpbdProbolinggo2026!';" class="px-2 py-1 bg-white border border-blue-200 rounded text-[10px] font-bold text-blue-700 hover:bg-blue-100">Super Admin (Full)</button>
-                        <button type="button" @click="email = 'anggota@bpbd.probolinggokab.go.id'; password='BpbdProbolinggo2026!';" class="px-2 py-1 bg-white border border-blue-200 rounded text-[10px] font-bold text-slate-700 hover:bg-blue-100">Staf Pusdalops</button>
-                    </div>
                 </div>
 
                 <!-- 4. Action Buttons (Kembali & Masuk) -->

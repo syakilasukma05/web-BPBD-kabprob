@@ -6,6 +6,26 @@
     <title>{{ $news->title }} | BPBD Kabupaten Probolinggo</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .prose ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; text-align: left; }
+        .prose ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 1rem; text-align: left; }
+        .prose h1 { font-size: 1.875rem; font-weight: 800; margin-top: 1.5rem; margin-bottom: 0.75rem; color: #1e293b; text-align: left; }
+        .prose h2 { font-size: 1.5rem; font-weight: 800; margin-top: 1.25rem; margin-bottom: 0.75rem; color: #1e293b; text-align: left; }
+        .prose h3 { font-size: 1.25rem; font-weight: 700; margin-top: 1rem; margin-bottom: 0.5rem; color: #334155; text-align: left; }
+        .prose p { margin-bottom: 0.85rem; line-height: 1.7; }
+        .prose table { width: 100%; border-collapse: collapse; margin-bottom: 1.25rem; }
+        .prose table td, .prose table th { border: 1px solid #cbd5e1; padding: 0.6rem 0.85rem; text-align: left; }
+        .prose table th { background-color: #f8fafc; font-weight: 700; }
+        .prose blockquote { border-left: 4px solid #ea580c; padding-left: 1rem; font-style: italic; color: #475569; margin-bottom: 1.25rem; }
+        .prose img { max-width: 100%; height: auto; border-radius: 0.75rem; margin: 1rem auto; }
+        .prose figure.image { display: inline-block; max-width: 100%; margin: 1rem 0; }
+        .prose figure.image img { margin: 0; }
+        .prose figure.image figcaption { font-size: 0.75rem; color: #64748b; text-align: center; margin-top: 0.35rem; }
+        .text-align-left, .prose .text-align-left { text-align: left !important; }
+        .text-align-center, .prose .text-align-center { text-align: center !important; }
+        .text-align-right, .prose .text-align-right { text-align: right !important; }
+        .text-align-justify, .prose .text-align-justify { text-align: justify !important; }
+    </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans">
     
@@ -13,7 +33,7 @@
     <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
             <a href="{{ route('home') }}" class="group flex items-center gap-3">
-                <img src="{{ !empty($settings['logo_frontend']) ? $settings['logo_frontend'] : asset('images/logo-bpbd.svg') }}" alt="Logo" class="h-11 sm:h-12 w-auto object-contain transition-transform group-hover:scale-105 duration-200">
+                <img src="{{ !empty($settings['logo_frontend']) ? $settings['logo_frontend'] : asset('images/logo-bpbd.svg') }}" alt="Logo" class="h-9 sm:h-10 w-auto object-contain transition-transform group-hover:scale-105 duration-200">
                 <div class="flex flex-col justify-center leading-tight">
                     <span class="font-extrabold text-xs sm:text-sm md:text-base text-[#1b263b] tracking-tight group-hover:text-[#375e47] transition-colors uppercase">
                         BPBD KABUPATEN PROBOLINGGO
@@ -48,7 +68,11 @@
         @endif
 
         <div class="prose max-w-none text-sm text-slate-700 leading-relaxed space-y-4 bg-white p-6 rounded-2xl border border-slate-200">
-            {!! nl2br(e($news->content)) !!}
+            @if(preg_match('/<[a-z][\s\S]*>/i', $news->content))
+                {!! $news->content !!}
+            @else
+                {!! nl2br(e($news->content)) !!}
+            @endif
         </div>
     </main>
 

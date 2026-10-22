@@ -12,7 +12,7 @@
     <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
             <a href="{{ route('home') }}" class="group flex items-center gap-3">
-                <img src="{{ !empty($settings['logo_frontend']) ? $settings['logo_frontend'] : asset('images/logo-bpbd.svg') }}" alt="Logo" class="h-11 sm:h-12 w-auto object-contain transition-transform group-hover:scale-105 duration-200">
+                <img src="{{ !empty($settings['logo_frontend']) ? $settings['logo_frontend'] : asset('images/logo-bpbd.svg') }}" alt="Logo" class="h-9 sm:h-10 w-auto object-contain transition-transform group-hover:scale-105 duration-200">
                 <div class="flex flex-col justify-center leading-tight">
                     <span class="font-extrabold text-xs sm:text-sm md:text-base text-[#1b263b] tracking-tight group-hover:text-[#375e47] transition-colors uppercase">
                         BPBD KABUPATEN PROBOLINGGO

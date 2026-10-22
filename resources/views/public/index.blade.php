@@ -65,6 +65,39 @@
         .animate-news-ticker:hover {
             animation-play-state: paused;
         }
+        .dropdown-scroll {
+            max-height: 360px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #cbd5e1 #f8fafc;
+        }
+        .dropdown-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .dropdown-scroll::-webkit-scrollbar-track {
+            background: #f8fafc;
+            border-radius: 0 12px 12px 0;
+        }
+        .dropdown-scroll::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 9999px;
+        }
+        .dropdown-scroll::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        @keyframes alert-glow {
+            0%, 100% {
+                box-shadow: 0 0 16px rgba(239, 68, 68, 0.45), 0 4px 10px rgba(0, 0, 0, 0.6);
+                border-color: rgba(239, 68, 68, 0.6);
+            }
+            50% {
+                box-shadow: 0 0 28px rgba(239, 68, 68, 0.8), 0 4px 14px rgba(0, 0, 0, 0.7);
+                border-color: rgba(248, 113, 113, 0.9);
+            }
+        }
+        .animate-alert-glow {
+            animation: alert-glow 2.4s ease-in-out infinite;
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col selection:bg-orange-600 selection:text-white"
@@ -75,6 +108,7 @@
           fontSize: 100, 
           activeSlide: 0,
           totalSlides: {{ count($sliders) }},
+          alertModalOpen: false,
           nextSlide() { this.activeSlide = (this.activeSlide + 1) % this.totalSlides },
           prevSlide() { this.activeSlide = (this.activeSlide - 1 + this.totalSlides) % this.totalSlides }
       }"
@@ -132,7 +166,7 @@
                     <a href="{{ route('home') }}" class="group flex items-center gap-3">
                         <img src="{{ (!empty($settings['logo_frontend']) && !str_contains($settings['logo_frontend'], 'diskominfo.probolinggokab.go.id')) ? $settings['logo_frontend'] : asset('images/logo-bpbd.svg') }}" 
                              alt="Logo Instansi" 
-                             class="h-11 sm:h-12 w-auto object-contain transition-transform group-hover:scale-105 duration-200">
+                             class="h-9 sm:h-10 w-auto object-contain transition-transform group-hover:scale-105 duration-200">
                         <div class="flex flex-col justify-center leading-tight">
                             <span class="font-extrabold text-xs sm:text-sm md:text-base text-[#1b263b] tracking-tight group-hover:text-[#375e47] transition-colors uppercase">
                                 BPBD KABUPATEN PROBOLINGGO
@@ -147,7 +181,7 @@
                 <!-- Middle: Navigation Menu (HOME, PROFIL, LAYANAN, DOKUMEN, INFORMASI, HUBUNGI, LOGIN) -->
                 <nav class="hidden lg:flex items-center space-x-4 xl:space-x-6">
                     @foreach($navMenus as $menu)
-                        @if(strtoupper($menu->title) === 'LOGIN')
+                        @if(in_array(strtoupper($menu->title), ['LOGIN']))
                             @continue
                         @endif
                         @if($menu->children && count($menu->children) > 0)
@@ -168,14 +202,16 @@
                                      x-transition:leave="transition ease-in duration-100"
                                      x-transition:leave-start="opacity-100 translate-y-0"
                                      x-transition:leave-end="opacity-0 translate-y-2"
-                                     class="absolute left-0 mt-1 w-64 rounded-xl bg-white shadow-xl ring-1 ring-black/5 border border-slate-100 py-2 z-50 overflow-hidden">
+                                     class="absolute left-0 mt-1 w-64 rounded-xl bg-white shadow-xl ring-1 ring-black/5 border border-slate-100 py-2 z-50 dropdown-scroll">
                                     @foreach($menu->children as $child)
                                         @php
+                                            $isSpanLapor = \Illuminate\Support\Str::contains(strtolower($child->title ?? ''), ['sp4n', 'lapor']);
                                             $isExt = ($child->menu_type === 'external_link' || $child->is_external || preg_match('/^https?:\/\//i', trim($child->url ?? '')));
                                             $linkUrl = $isExt ? ($child->external_url ?? $child->url) : $child->url;
-                                            $targetAttr = $child->target ?: ($isExt ? '_blank' : '_self');
+                                            $targetAttr = $isSpanLapor ? '_blank' : ($child->target ?: ($isExt ? '_blank' : '_self'));
+                                            $relAttr = ($isSpanLapor || $targetAttr === '_blank') ? 'rel="noopener noreferrer"' : '';
                                         @endphp
-                                        <a href="{{ $linkUrl }}" target="{{ $targetAttr }}"
+                                        <a href="{{ $linkUrl }}" target="{{ $targetAttr }}" {!! $relAttr !!}
                                            onmouseenter="speakText('{{ e($child->title) }}')"
                                            class="block px-4 py-2.5 text-xs text-slate-700 hover:bg-[#375e47] hover:text-white transition-colors duration-150 font-semibold">
                                             {{ $child->title }}
@@ -206,7 +242,7 @@
                     <div class="hidden xl:block flex-shrink-0">
                         <img src="{{ $settings['logo_berakhlak'] ?? 'https://diskominfo.probolinggokab.go.id/frontend/images/img-berakhlak.png' }}" 
                              alt="BerAKHLAK" 
-                             class="h-10 w-auto object-contain">
+                             class="h-7 sm:h-8 w-auto object-contain">
                     </div>
 
                     <!-- Mobile Menu Button -->
@@ -229,6 +265,9 @@
              x-transition:leave-end="opacity-0 -translate-y-4"
              class="lg:hidden border-b border-slate-200 bg-white px-4 pt-2 pb-6 space-y-2">
             @foreach($navMenus as $menu)
+                @if(in_array(strtoupper($menu->title), ['LOGIN']))
+                    @continue
+                @endif
                 @if($menu->children && count($menu->children) > 0)
                     <div x-data="{ subOpen: false }" class="space-y-1">
                         <button @click="subOpen = !subOpen" class="w-full flex justify-between items-center px-3 py-2 text-sm font-bold text-slate-800 hover:bg-orange-50 rounded-lg">
@@ -238,11 +277,13 @@
                         <div x-show="subOpen" class="pl-4 space-y-1">
                             @foreach($menu->children as $child)
                                 @php
+                                    $isSpanLapor = \Illuminate\Support\Str::contains(strtolower($child->title ?? ''), ['sp4n', 'lapor']);
                                     $isExt = ($child->menu_type === 'external_link' || $child->is_external || preg_match('/^https?:\/\//i', trim($child->url ?? '')));
                                     $linkUrl = $isExt ? ($child->external_url ?? $child->url) : $child->url;
-                                    $targetAttr = $child->target ?: ($isExt ? '_blank' : '_self');
+                                    $targetAttr = $isSpanLapor ? '_blank' : ($child->target ?: ($isExt ? '_blank' : '_self'));
+                                    $relAttr = ($isSpanLapor || $targetAttr === '_blank') ? 'rel="noopener noreferrer"' : '';
                                 @endphp
-                                <a href="{{ $linkUrl }}" target="{{ $targetAttr }}" class="block px-3 py-2 text-xs font-medium text-slate-600 hover:text-orange-600 hover:bg-orange-50 rounded-md">
+                                <a href="{{ $linkUrl }}" target="{{ $targetAttr }}" {!! $relAttr !!} class="block px-3 py-2 text-xs font-medium text-slate-600 hover:text-orange-600 hover:bg-orange-50 rounded-md">
                                     {{ $child->title }}
                                 </a>
                             @endforeach
@@ -303,43 +344,76 @@
                             <h2 class="text-lg sm:text-xl text-orange-100 font-medium leading-relaxed max-w-xl">
                                 {{ $slide->subtitle }}
                             </h2>
-
-                            <!-- Hero CTA Action Buttons (SP4N Lapor & Hubungi Kami) -->
-                            @php
-                                $sp4nUrl = $settings['hero_sp4n_url'] ?? ($settings['sp4n_lapor_url'] ?? 'https://www.lapor.go.id/');
-                                $sp4nTarget = $settings['hero_sp4n_target'] ?? '_blank';
-                                $sp4nStatus = $settings['hero_sp4n_status'] ?? 'aktif';
-
-                                $contactUrl = $settings['hero_contact_url'] ?? ($settings['whatsapp_url'] ?? 'https://wa.me/628123456789');
-                                $contactTarget = $settings['hero_contact_target'] ?? '_blank';
-                                $contactStatus = $settings['hero_contact_status'] ?? 'aktif';
-                            @endphp
-
-                            @if(($sp4nStatus === 'aktif' || $sp4nStatus == '1') || ($contactStatus === 'aktif' || $contactStatus == '1'))
-                                <div class="pt-3 flex flex-wrap items-center gap-3.5 z-20">
-                                    <!-- Button 1: SP4N Lapor -->
-                                    @if($sp4nStatus === 'aktif' || $sp4nStatus == '1')
-                                        <a href="{{ $sp4nUrl }}" target="{{ $sp4nTarget }}" rel="noopener noreferrer" 
-                                           class="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white font-extrabold text-xs sm:text-sm shadow-xl shadow-orange-600/30 transition-all transform hover:scale-105 border border-orange-400/40">
-                                            <i class="fas fa-bullhorn text-sm text-amber-200"></i>
-                                            <span>SP4N Lapor</span>
-                                        </a>
-                                    @endif
-
-                                    <!-- Button 2: Hubungi Kami / WhatsApp -->
-                                    @if($contactStatus === 'aktif' || $contactStatus == '1')
-                                        <a href="{{ $contactUrl }}" target="{{ $contactTarget }}" rel="noopener noreferrer" 
-                                           class="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm shadow-xl shadow-emerald-600/30 transition-all transform hover:scale-105 border border-emerald-400/40">
-                                            <i class="fab fa-whatsapp text-base text-emerald-200"></i>
-                                            <span>Hubungi Kami</span>
-                                        </a>
-                                    @endif
-                                </div>
-                            @endif
                         </div>
                     </div>
                 </div>
             @endforeach
+
+            @php
+                $alertActive = ($settings['active_alert_status'] ?? 'aktif') === 'aktif';
+                $alertTitle = !empty($settings['active_alert_title']) ? $settings['active_alert_title'] : 'Peringatan Aktif';
+                $alertLink = trim($settings['active_alert_link'] ?? '');
+                $alertMessage = trim($settings['active_alert_message'] ?? '');
+                $hasLink = !empty($alertLink);
+                $hasMessage = !empty(strip_tags($alertMessage));
+            @endphp
+
+            @if($alertActive)
+            <!-- Emergency Warning Active Alert Badge (Pojok Kanan Atas Hero) -->
+            <div class="absolute top-6 right-6 sm:top-8 sm:right-8 lg:top-8 lg:right-10 z-30 pointer-events-auto" title="Peringatan Dini Kebencanaan Aktif: {{ $alertTitle }}">
+                @if($hasLink && !$hasMessage)
+                    <a href="{{ $alertLink }}" {{ \Illuminate\Support\Str::startsWith($alertLink, 'http') ? 'target="_blank" rel="noopener noreferrer"' : '' }} 
+                       class="inline-flex items-center gap-2 sm:gap-2.5 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-full bg-gradient-to-r from-red-950/90 via-[#450a14]/90 to-red-950/90 border border-red-500/70 animate-alert-glow backdrop-blur-md transition-all duration-300 hover:scale-105 cursor-pointer">
+                        <!-- Live Pulsing Status Beacon -->
+                        <span class="relative flex h-2.5 w-2.5">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-80"></span>
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 shadow-[0_0_8px_#ef4444]"></span>
+                        </span>
+
+                        <!-- Triangle Warning Icon with Red Glow -->
+                        <i class="fas fa-triangle-exclamation text-sm sm:text-base text-red-300 drop-shadow-[0_0_8px_rgba(248,113,113,0.9)]"></i>
+
+                        <!-- Alert Label -->
+                        <span class="text-[11px] sm:text-xs font-black tracking-wider uppercase text-red-100 drop-shadow-sm font-sans">
+                            {{ $alertTitle }}
+                        </span>
+                    </a>
+                @elseif($hasMessage)
+                    <button type="button" @click="alertModalOpen = true" 
+                            class="inline-flex items-center gap-2 sm:gap-2.5 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-full bg-gradient-to-r from-red-950/90 via-[#450a14]/90 to-red-950/90 border border-red-500/70 animate-alert-glow backdrop-blur-md transition-all duration-300 hover:scale-105 cursor-pointer text-left">
+                        <!-- Live Pulsing Status Beacon -->
+                        <span class="relative flex h-2.5 w-2.5">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-80"></span>
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 shadow-[0_0_8px_#ef4444]"></span>
+                        </span>
+
+                        <!-- Triangle Warning Icon with Red Glow -->
+                        <i class="fas fa-triangle-exclamation text-sm sm:text-base text-red-300 drop-shadow-[0_0_8px_rgba(248,113,113,0.9)]"></i>
+
+                        <!-- Alert Label -->
+                        <span class="text-[11px] sm:text-xs font-black tracking-wider uppercase text-red-100 drop-shadow-sm font-sans">
+                            {{ $alertTitle }}
+                        </span>
+                    </button>
+                @else
+                    <div class="inline-flex items-center gap-2 sm:gap-2.5 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-full bg-gradient-to-r from-red-950/90 via-[#450a14]/90 to-red-950/90 border border-red-500/70 animate-alert-glow backdrop-blur-md transition-all duration-300 hover:scale-105">
+                        <!-- Live Pulsing Status Beacon -->
+                        <span class="relative flex h-2.5 w-2.5">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-80"></span>
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 shadow-[0_0_8px_#ef4444]"></span>
+                        </span>
+
+                        <!-- Triangle Warning Icon with Red Glow -->
+                        <i class="fas fa-triangle-exclamation text-sm sm:text-base text-red-300 drop-shadow-[0_0_8px_rgba(248,113,113,0.9)]"></i>
+
+                        <!-- Alert Label -->
+                        <span class="text-[11px] sm:text-xs font-black tracking-wider uppercase text-red-100 drop-shadow-sm font-sans">
+                            {{ $alertTitle }}
+                        </span>
+                    </div>
+                @endif
+            </div>
+            @endif
 
             <!-- Slider Controls (Left / Right Arrow Buttons) -->
             <button @click="prevSlide()" class="absolute left-4 top-1/2 -translate-y-1/2 z-20 w-12 h-12 bg-white/20 hover:bg-orange-600 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-all duration-200 focus:outline-none">
@@ -358,6 +432,59 @@
                 @endforeach
             </div>
         </section>
+
+        @if($alertActive && $hasMessage)
+        <!-- Modal Detail Peringatan Aktif -->
+        <div x-show="alertModalOpen" x-cloak 
+             class="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 scale-95"
+             x-transition:enter-end="opacity-100 scale-100"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100 scale-100"
+             x-transition:leave-end="opacity-0 scale-95">
+            <div @click.away="alertModalOpen = false" 
+                 class="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border border-red-200 overflow-hidden relative">
+                <!-- Modal Header -->
+                <div class="bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white p-5 sm:p-6 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white text-xl shadow-xs">
+                            <i class="fas fa-triangle-exclamation"></i>
+                        </div>
+                        <div>
+                            <span class="text-[10px] font-extrabold uppercase tracking-widest text-amber-200 block">Peringatan Dini Kebencanaan</span>
+                            <h3 class="text-base sm:text-lg font-black tracking-tight">{{ $alertTitle }}</h3>
+                        </div>
+                    </div>
+                    <button type="button" @click="alertModalOpen = false" class="w-8 h-8 rounded-full bg-black/10 hover:bg-black/20 text-white flex items-center justify-center transition cursor-pointer">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <!-- Modal Body / CKEditor Content -->
+                <div class="p-6 sm:p-8 max-h-[60vh] overflow-y-auto text-slate-700 text-sm leading-relaxed space-y-3">
+                    {!! $alertMessage !!}
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="bg-slate-50 px-6 py-4 border-t border-slate-100 flex items-center justify-between">
+                    <span class="text-xs text-slate-400 font-medium">BPBD Kabupaten Probolinggo</span>
+                    <div class="flex items-center gap-3">
+                        @if($hasLink)
+                            <a href="{{ $alertLink }}" {{ \Illuminate\Support\Str::startsWith($alertLink, 'http') ? 'target="_blank" rel="noopener noreferrer"' : '' }} 
+                               class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm">
+                                <span>Buka Tautan Terkait</span>
+                                <i class="fas fa-arrow-right text-[10px]"></i>
+                            </a>
+                        @endif
+                        <button type="button" @click="alertModalOpen = false" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer">
+                            Tutup
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        @endif
 
         <!-- INFORMASI KEBENCANAAN TERBARU & SIDEBAR WIDGETS SECTION -->
         <section class="py-12 bg-slate-50">
@@ -463,8 +590,6 @@
             </div>
         </section>
 
-
-
     </main>
 
     <!-- DYNAMIC FOOTER SECTION -->
@@ -472,8 +597,8 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8 pb-10 border-b border-slate-800">
                 
-                <!-- Col 1: Brand & Description (5 cols) -->
-                <div class="lg:col-span-5 space-y-4">
+                <!-- Col 1: Brand & Description (4 cols) -->
+                <div class="lg:col-span-4 space-y-4">
                     <div class="flex items-center gap-3">
                         <img src="{{ $settings['logo_backend'] ?? 'https://bpbd.probolinggokab.go.id/wp-content/uploads/2021/04/logo-bpbd.png' }}" 
                              alt="Footer Logo" class="h-12 w-auto object-contain">
@@ -486,7 +611,7 @@
                         {{ $settings['site_description'] ?? 'Website Resmi BPBD Kabupaten Probolinggo - Pusat Informasi Kebencanaan, Peringatan Dini, dan Pelayanan Tanggap Darurat Bencana.' }}
                     </p>
                     
-                    <!-- Social Media Links (Facebook, Instagram, Twitter/X, YouTube, TikTok) -->
+                    <!-- Social Media Links -->
                     <div class="pt-2 flex items-center gap-3">
                         @if(!empty($settings['social_facebook']))
                             <a href="{{ $settings['social_facebook'] }}" target="_blank" rel="noopener noreferrer" title="Facebook BPBD Kabupaten Probolinggo"
@@ -521,8 +646,8 @@
                     </div>
                 </div>
 
-                <!-- Col 2: Survey Link (3 cols) -->
-                <div class="lg:col-span-3 space-y-3">
+                <!-- Col 2: Survey Link (2 cols) -->
+                <div class="lg:col-span-2 space-y-3">
                     <h4 class="text-xs font-bold text-white uppercase tracking-wider border-l-2 border-orange-500 pl-2">LINK SURVEI</h4>
                     <div class="space-y-2">
                         <a href="{{ $settings['survey_url'] ?? 'https://sukma.jatimprov.go.id/' }}" target="_blank" rel="noopener noreferrer" class="inline-block group" title="Klik untuk membuka Link Survei">
@@ -532,8 +657,35 @@
                     </div>
                 </div>
 
-                <!-- Col 3: Address & Contact (4 cols) -->
-                <div class="lg:col-span-4 space-y-3">
+                <!-- Col 3: Statistik Pengunjung (3 cols - Side by Side with Link Survei) -->
+                <div class="lg:col-span-3 space-y-3">
+                    <h4 class="text-xs font-bold text-white uppercase tracking-wider border-l-2 border-orange-500 pl-2">STATISTIK PENGUNJUNG</h4>
+                    <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5 space-y-2 text-xs text-slate-300 shadow-sm">
+                        <div class="flex items-center justify-between pb-1.5 border-b border-slate-700/50">
+                            <span class="font-medium text-slate-400">Visit Hari ini</span>
+                            <span class="font-extrabold text-orange-400 font-mono text-xs">: {{ number_format($settings['visit_today'] ?? 124, 0, ',', '.') }}</span>
+                        </div>
+                        <div class="flex items-center justify-between pb-1.5 border-b border-slate-700/50">
+                            <span class="font-medium text-slate-400">Visit Bulan ini</span>
+                            <span class="font-extrabold text-amber-300 font-mono text-xs">: {{ number_format($settings['visit_month'] ?? 2840, 0, ',', '.') }}</span>
+                        </div>
+                        <div class="flex items-center justify-between pb-1.5 border-b border-slate-700/50">
+                            <span class="font-medium text-slate-400">Visit Tahun ini</span>
+                            <span class="font-extrabold text-emerald-400 font-mono text-xs">: {{ number_format($settings['visit_year'] ?? 34510, 0, ',', '.') }}</span>
+                        </div>
+                        <div class="flex items-center justify-between pb-1.5 border-b border-slate-700/50">
+                            <span class="font-medium text-slate-400">Hits Hari ini</span>
+                            <span class="font-extrabold text-sky-400 font-mono text-xs">: {{ number_format($settings['hits_today'] ?? 380, 0, ',', '.') }}</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="font-medium text-slate-400">Hits Bulan ini</span>
+                            <span class="font-extrabold text-indigo-300 font-mono text-xs">: {{ number_format($settings['hits_month'] ?? 8920, 0, ',', '.') }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Col 4: Address & Contact (3 cols) -->
+                <div class="lg:col-span-3 space-y-3">
                     <h4 class="text-xs font-bold text-white uppercase tracking-wider border-l-2 border-orange-500 pl-2">Alamat Posko & Pusdalops</h4>
                     <p class="text-xs text-slate-400 leading-relaxed">
                         <i class="fas fa-map-marker-alt text-orange-500 me-2"></i>

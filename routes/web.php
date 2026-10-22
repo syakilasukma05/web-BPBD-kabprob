@@ -33,6 +33,12 @@ Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
+// Password Reset Routes
+Route::get('/forgot-password', [AuthController::class, 'showForgotPassword'])->name('password.request');
+Route::post('/forgot-password', [AuthController::class, 'sendResetLinkEmail'])->name('password.email');
+Route::get('/reset-password/{token}', [AuthController::class, 'showResetPassword'])->name('password.reset');
+Route::post('/reset-password', [AuthController::class, 'resetPassword'])->name('password.update');
+
 /*
 |--------------------------------------------------------------------------
 | Admin Panel Routes (Role Based Access Control & Full CRUD)
@@ -57,7 +63,14 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
     Route::put('/news/{id}', [AdminController::class, 'newsUpdate'])->name('news.update');
     Route::delete('/news/{id}', [AdminController::class, 'newsDestroy'])->name('news.destroy');
 
-    // 2.5 LOG AKTIVITAS STAF (Khusus Staf Pusdalops)
+    // 2.5 GALERI MEDIA (FOTO & VIDEO) CRUD (Super Admin & Anggota Staf)
+    Route::get('/media', [AdminController::class, 'media'])->name('media');
+    Route::get('/media/{id}/edit', [AdminController::class, 'mediaEdit'])->name('media.edit');
+    Route::post('/media', [AdminController::class, 'mediaStore'])->name('media.store');
+    Route::put('/media/{id}', [AdminController::class, 'mediaUpdate'])->name('media.update');
+    Route::delete('/media/{id}', [AdminController::class, 'mediaDestroy'])->name('media.destroy');
+
+    // 2.6 LOG AKTIVITAS STAF (Khusus Staf Pusdalops)
     Route::get('/staf-logs', [AdminController::class, 'stafLogs'])->name('staf_logs');
 
     // RESTRICTED TO SUPER ADMIN ONLY:
@@ -113,13 +126,6 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
         Route::put('/links/{id}', [AdminController::class, 'linkUpdate'])->name('links.update');
         Route::delete('/links/{id}', [AdminController::class, 'linkDestroy'])->name('links.destroy');
 
-        // 7.5 Galeri Media (Foto & Video) CRUD
-        Route::get('/media', [AdminController::class, 'media'])->name('media');
-        Route::get('/media/{id}/edit', [AdminController::class, 'mediaEdit'])->name('media.edit');
-        Route::post('/media', [AdminController::class, 'mediaStore'])->name('media.store');
-        Route::put('/media/{id}', [AdminController::class, 'mediaUpdate'])->name('media.update');
-        Route::delete('/media/{id}', [AdminController::class, 'mediaDestroy'])->name('media.destroy');
-
         // 8. Contact Messages & Lapor Bencana CRUD
         Route::get('/messages', [AdminController::class, 'messages'])->name('messages');
         Route::put('/messages/{id}', [AdminController::class, 'messageStatus'])->name('messages.status');
@@ -132,6 +138,13 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
         Route::put('/users/{id}', [AdminController::class, 'userUpdate'])->name('users.update');
         Route::delete('/users/{id}', [AdminController::class, 'userDestroy'])->name('users.destroy');
 
+        // 10. Visitor Statistics CRUD
+        Route::get('/visitor-stats', [AdminController::class, 'visitorStats'])->name('visitor_stats');
+        Route::post('/visitor-stats', [AdminController::class, 'visitorStatStore'])->name('visitor_stats.store');
+        Route::get('/visitor-stats/{id}/edit', [AdminController::class, 'visitorStatEdit'])->name('visitor_stats.edit');
+        Route::put('/visitor-stats/{id}', [AdminController::class, 'visitorStatUpdate'])->name('visitor_stats.update');
+        Route::delete('/visitor-stats/{id}', [AdminController::class, 'visitorStatDestroy'])->name('visitor_stats.destroy');
+
         // 9.5 Activity Logs (Log Aktivitas)
         Route::get('/logs', [AdminController::class, 'logs'])->name('logs');
         Route::delete('/logs/clear', [AdminController::class, 'logsClear'])->name('logs.clear');
@@ -140,6 +153,10 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
         // 10. Site Settings
         Route::get('/settings', [AdminController::class, 'settings'])->name('settings');
         Route::post('/settings', [AdminController::class, 'settingsUpdate'])->name('settings.update');
+
+        // 10.5. Peringatan Aktif (Emergency Alert Management)
+        Route::get('/active-alert', [AdminController::class, 'activeAlertEdit'])->name('active_alert');
+        Route::post('/active-alert', [AdminController::class, 'activeAlertUpdate'])->name('active_alert.update');
     });
 
 });

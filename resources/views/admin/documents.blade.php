@@ -93,7 +93,7 @@
                                     </a>
 
                                     <!-- Delete Button (Rose) -->
-                                    <form action="{{ route('admin.documents.destroy', $docItem->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus dokumen ini?')">
+                                    <form action="{{ route('admin.documents.destroy', $docItem->id) }}" method="POST" class="inline" data-confirm="Apakah Anda yakin ingin menghapus dokumen ini?">
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit" title="Hapus Dokumen" 

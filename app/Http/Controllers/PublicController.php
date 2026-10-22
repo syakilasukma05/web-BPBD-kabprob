@@ -14,6 +14,7 @@ use App\Models\PageDocument;
 use App\Models\ContactMessage;
 use App\Models\PublicDocument;
 use App\Models\MediaItem;
+use App\Models\VisitorStatistic;
 use Illuminate\Support\Str;
 
 class PublicController extends Controller
@@ -30,12 +31,72 @@ class PublicController extends Controller
             ->get();
             
         $sliders = HeroSlider::where('is_active', true)->orderBy('order', 'asc')->get();
-        $latestNews = NewsItem::orderBy('published_at', 'desc')->take(4)->get();
+        $latestNews = NewsItem::where(function($q) { $q->where('status', 'aktif')->orWhereNull('status')->orWhere('status', ''); })->orderBy('order', 'asc')->orderBy('published_at', 'desc')->take(4)->get();
         $sidebarWidgets = SidebarWidget::where('is_active', true)->orderBy('order', 'asc')->get();
         $relatedLinks = RelatedLink::where('is_active', true)->orderBy('order', 'asc')->get();
 
+        // Auto increment today's visitor count
+        $today = date('Y-m-d');
+        $todayStat = VisitorStatistic::firstOrCreate(
+            ['date' => $today, 'period_type' => 'daily'],
+            ['count' => 0, 'notes' => 'Pengunjung Otomatis Harian']
+        );
+        $todayStat->increment('count');
+
+        // Fetch datasets for visitor chart (Hari, Minggu, Bulan, Tahun)
+        $dailyData = VisitorStatistic::where('period_type', 'daily')
+            ->orderBy('date', 'desc')
+            ->take(14)
+            ->get()
+            ->reverse()
+            ->values();
+
+        $weeklyData = VisitorStatistic::where('period_type', 'weekly')
+            ->orderBy('date', 'desc')
+            ->take(8)
+            ->get()
+            ->reverse()
+            ->values();
+
+        $monthlyData = VisitorStatistic::where('period_type', 'monthly')
+            ->orderBy('date', 'desc')
+            ->take(12)
+            ->get()
+            ->reverse()
+            ->values();
+
+        $yearlyData = VisitorStatistic::where('period_type', 'yearly')
+            ->orderBy('date', 'desc')
+            ->take(6)
+            ->get()
+            ->reverse()
+            ->values();
+
+        $visitorStatsData = [
+            'daily' => $dailyData->map(fn($item) => [
+                'label' => \Carbon\Carbon::parse($item->date)->format('d M'),
+                'count' => (int) $item->count,
+            ]),
+            'weekly' => $weeklyData->map(fn($item) => [
+                'label' => 'M' . \Carbon\Carbon::parse($item->date)->format('W (M Y)'),
+                'count' => (int) $item->count,
+            ]),
+            'monthly' => $monthlyData->map(fn($item) => [
+                'label' => \Carbon\Carbon::parse($item->date)->format('M Y'),
+                'count' => (int) $item->count,
+            ]),
+            'yearly' => $yearlyData->map(fn($item) => [
+                'label' => 'Thn ' . \Carbon\Carbon::parse($item->date)->format('Y'),
+                'count' => (int) $item->count,
+            ]),
+            'summary' => [
+                'today' => (int) $todayStat->count,
+                'total' => (int) VisitorStatistic::sum('count'),
+            ]
+        ];
+
         return view('public.index', compact(
-            'settings', 'navMenus', 'sliders', 'latestNews', 'sidebarWidgets', 'relatedLinks'
+            'settings', 'navMenus', 'sliders', 'latestNews', 'sidebarWidgets', 'relatedLinks', 'visitorStatsData'
         ));
     }
 
@@ -60,7 +121,7 @@ class PublicController extends Controller
             $page->load(['documents', 'links']);
         }
 
-        $latestNews = NewsItem::orderBy('published_at', 'desc')->take(3)->get();
+        $latestNews = NewsItem::where(function($q) { $q->where('status', 'aktif')->orWhereNull('status')->orWhere('status', ''); })->orderBy('order', 'asc')->orderBy('published_at', 'desc')->take(3)->get();
         $sidebarWidgets = SidebarWidget::where('is_active', true)->orderBy('order', 'asc')->get();
 
         return view('public.page', compact('settings', 'navMenus', 'page', 'latestNews', 'sidebarWidgets'));
@@ -107,10 +168,10 @@ class PublicController extends Controller
             ->orderBy('order', 'asc')
             ->get();
             
-        $news = NewsItem::where('slug', $slug)->firstOrFail();
+        $news = NewsItem::where(function($q) { $q->where('status', 'aktif')->orWhereNull('status')->orWhere('status', ''); })->where('slug', $slug)->firstOrFail();
         $news->increment('views');
 
-        $latestNews = NewsItem::where('id', '!=', $news->id)->orderBy('published_at', 'desc')->take(3)->get();
+        $latestNews = NewsItem::where(function($q) { $q->where('status', 'aktif')->orWhereNull('status')->orWhere('status', ''); })->where('id', '!=', $news->id)->orderBy('order', 'asc')->orderBy('published_at', 'desc')->take(3)->get();
         $sidebarWidgets = SidebarWidget::where('is_active', true)->orderBy('order', 'asc')->get();
 
         return view('public.news_detail', compact('settings', 'navMenus', 'news', 'latestNews', 'sidebarWidgets'));
@@ -125,7 +186,7 @@ class PublicController extends Controller
             ->orderBy('order', 'asc')
             ->get();
 
-        $newsList = NewsItem::orderBy('published_at', 'desc')->paginate(6);
+        $newsList = NewsItem::where(function($q) { $q->where('status', 'aktif')->orWhereNull('status')->orWhere('status', ''); })->orderBy('order', 'asc')->orderBy('published_at', 'desc')->paginate(6);
         $sidebarWidgets = SidebarWidget::where('is_active', true)->orderBy('order', 'asc')->get();
 
         return view('public.informasi', compact('settings', 'navMenus', 'newsList', 'sidebarWidgets'));
@@ -199,6 +260,10 @@ class PublicController extends Controller
             ->orderBy('order', 'asc')
             ->get();
 
+        $latestNews = NewsItem::where(function($q) {
+            $q->where('status', 'aktif')->orWhereNull('status');
+        })->orderBy('order', 'asc')->orderBy('published_at', 'desc')->take(5)->get();
+
         $type = $request->get('type', 'semua');
         $query = MediaItem::where('is_active', true)->orderBy('order', 'asc')->orderBy('created_at', 'desc');
 
@@ -209,6 +274,6 @@ class PublicController extends Controller
         $mediaList = $query->paginate(12)->withQueryString();
         $sidebarWidgets = SidebarWidget::where('is_active', true)->orderBy('order', 'asc')->get();
 
-        return view('public.galeri', compact('settings', 'navMenus', 'mediaList', 'sidebarWidgets', 'type'));
+        return view('public.galeri', compact('settings', 'navMenus', 'latestNews', 'mediaList', 'sidebarWidgets', 'type'));
     }
 }

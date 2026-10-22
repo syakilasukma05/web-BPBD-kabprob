@@ -81,15 +81,15 @@
                     <i class="fas fa-chart-pie text-sm"></i> Dashboard Utama
                 </a>
 
-                <!-- ACCESSIBLE BY BOTH ANGGOTA & SUPER ADMIN -->
-                <a href="{{ route('admin.documents') }}" 
-                   class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all {{ request()->routeIs('admin.documents') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 font-bold' : 'hover:bg-slate-800/80 text-slate-300' }}">
-                    <i class="fas fa-file-alt text-sm text-blue-400"></i> Dokumen Kinerja
-                </a>
-
+                <!-- ACCESSIBLE BY BOTH ANGGOTA STAF & SUPER ADMIN -->
                 <a href="{{ route('admin.news') }}" 
                    class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all {{ request()->routeIs('admin.news') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 font-bold' : 'hover:bg-slate-800/80 text-slate-300' }}">
                     <i class="fas fa-newspaper text-sm text-purple-400"></i> Berita & Informasi
+                </a>
+
+                <a href="{{ route('admin.media') }}" 
+                   class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all {{ request()->routeIs('admin.media*') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 font-bold' : 'hover:bg-slate-800/80 text-slate-300' }}">
+                    <i class="fas fa-photo-video text-sm text-amber-400"></i> Galeri Media (Foto & Video)
                 </a>
 
                 @if(!auth()->user()->isSuperAdmin())
@@ -108,6 +108,11 @@
                         <i class="fas fa-images text-sm text-amber-400"></i> Banner Utama
                     </a>
 
+                    <a href="{{ route('admin.active_alert') }}" 
+                       class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all {{ request()->routeIs('admin.active_alert*') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 font-bold' : 'hover:bg-slate-800/80 text-slate-300' }}">
+                        <i class="fas fa-triangle-exclamation text-sm text-rose-400"></i> Peringatan Aktif
+                    </a>
+
                     <a href="{{ route('admin.navigation') }}" 
                        class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all {{ request()->routeIs('admin.navigation*') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 font-bold' : 'hover:bg-slate-800/80 text-slate-300' }}">
                         <i class="fas fa-sitemap text-sm text-cyan-400"></i> Struktur Navigasi
@@ -116,11 +121,6 @@
                     <a href="{{ route('admin.menus') }}" 
                        class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all {{ request()->routeIs('admin.menus*') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 font-bold' : 'hover:bg-slate-800/80 text-slate-300' }}">
                         <i class="fas fa-file-signature text-sm text-emerald-400"></i> CMS Editor Konten
-                    </a>
-
-                    <a href="{{ route('admin.pages') }}" 
-                       class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all {{ request()->routeIs('admin.pages') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 font-bold' : 'hover:bg-slate-800/80 text-slate-300' }}">
-                        <i class="fas fa-file-signature text-sm text-rose-400"></i> Halaman Profil & Layanan
                     </a>
 
                     <a href="{{ route('admin.widgets') }}" 
@@ -133,9 +133,9 @@
                         <i class="fas fa-link text-sm text-teal-400"></i> Tautan Terkait Logo
                     </a>
 
-                    <a href="{{ route('admin.media') }}" 
-                       class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all {{ request()->routeIs('admin.media') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 font-bold' : 'hover:bg-slate-800/80 text-slate-300' }}">
-                        <i class="fas fa-photo-video text-sm text-amber-400"></i> Galeri Media (Foto & Video)
+                    <a href="{{ route('admin.visitor_stats') }}" 
+                       class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all {{ request()->routeIs('admin.visitor_stats*') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 font-bold' : 'hover:bg-slate-800/80 text-slate-300' }}">
+                        <i class="fas fa-chart-line text-sm text-blue-400"></i> Statistik Pengunjung
                     </a>
 
                     <a href="{{ route('admin.users') }}" 
@@ -244,8 +244,8 @@
 
     </div>
 
-    <!-- CKEditor 5 Global Script & Protection Guard -->
-    <script src="https://cdn.ckeditor.com/ckeditor5/39.0.1/classic/ckeditor.js"></script>
+    <!-- CKEditor 5 Global Script & Protection Guard (Super-build with Full HTML Support) -->
+    <script src="https://cdn.ckeditor.com/ckeditor5/39.0.1/super-build/ckeditor.js"></script>
     <script>
         // Global HTML Sanitizer for CKEditor links (tel:, mailto:, http:, https:)
         window.sanitizeCkHtml = function(html) {
@@ -294,8 +294,27 @@
             const textarea = document.getElementById(textareaId);
             if (!textarea) return Promise.reject('Textarea not found');
 
+            // If an active editor instance is already attached to this textarea, reuse it via setData
+            if (textarea.ckeditorInstance) {
+                try {
+                    const cleanData = window.sanitizeCkHtml(initialContent || textarea.value || '');
+                    textarea.ckeditorInstance.setData(cleanData);
+                    return Promise.resolve(textarea.ckeditorInstance);
+                } catch(e) {
+                    try { textarea.ckeditorInstance.destroy(); } catch(err) {}
+                    textarea.ckeditorInstance = null;
+                }
+            }
+
+            // Clean up any orphan duplicate .ck-editor elements next to the textarea
+            if (textarea.parentElement) {
+                const duplicates = textarea.parentElement.querySelectorAll('.ck-editor');
+                duplicates.forEach(el => el.remove());
+            }
+
             textarea.removeAttribute('readonly');
             textarea.removeAttribute('disabled');
+            textarea.style.display = '';
 
             const cleanData = window.sanitizeCkHtml(initialContent || textarea.value || '');
             textarea.value = cleanData;
@@ -313,7 +332,24 @@
                     defaultProtocol: 'https://',
                     addTargetToExternalLinks: false
                 },
-                placeholder: 'Tuliskan isi konten profesional di sini...'
+                placeholder: 'Tuliskan isi konten profesional di sini...',
+                htmlSupport: {
+                    allow: [
+                        {
+                            name: /.*/,
+                            attributes: true,
+                            classes: true,
+                            styles: true
+                        }
+                    ]
+                },
+                removePlugins: [
+                    'AIAssistant', 'CKBox', 'CKFinder', 'EasyImage', 'MultiLevelList', 'RealTimeCollaborativeComments',
+                    'RealTimeCollaborativeTrackChanges', 'RealTimeCollaborativeRevisionHistory', 'PresenceList',
+                    'Comments', 'TrackChanges', 'TrackChangesData', 'RevisionHistory', 'Pagination', 'WProofreader',
+                    'MathType', 'SlashCommand', 'Template', 'DocumentOutline', 'FormatPainter', 'TableOfContents',
+                    'PasteFromOfficeEnhanced', 'CaseChange'
+                ]
             };
 
             const attach = (editorClass) => {
@@ -326,7 +362,10 @@
                         editor.editing.view.isReadOnly = false;
                     }
 
-                    editor.setData(cleanData);
+                    if (cleanData) {
+                        editor.setData(cleanData);
+                    }
+                    textarea.ckeditorInstance = editor;
 
                     editor.model.document.on('change:data', () => {
                         const currentData = window.sanitizeCkHtml(editor.getData());
@@ -340,14 +379,114 @@
                 });
             };
 
-            if (typeof ClassicEditor !== 'undefined') {
-                return attach(ClassicEditor);
-            } else if (typeof CKEDITOR !== 'undefined' && CKEDITOR.ClassicEditor) {
+            if (typeof CKEDITOR !== 'undefined' && CKEDITOR.ClassicEditor) {
                 return attach(CKEDITOR.ClassicEditor);
+            } else if (typeof ClassicEditor !== 'undefined') {
+                return attach(ClassicEditor);
             }
 
             return Promise.reject('CKEditor library not loaded');
         };
+    </script>
+
+    <!-- Global Delete Confirmation Modal -->
+    <div id="globalDeleteConfirmModal" class="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden" style="display: none;">
+        <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden p-6 space-y-5 animate-in fade-in zoom-in duration-150">
+            <div class="flex items-start gap-4">
+                <div class="w-11 h-11 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center text-xl shrink-0 shadow-xs border border-rose-200">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div>
+                    <h3 class="font-extrabold text-slate-800 text-base">Konfirmasi Hapus</h3>
+                    <p class="text-xs text-slate-500 mt-1 leading-relaxed">Apakah Anda yakin ingin menghapus data ini? Data yang sudah dihapus tidak dapat dikembalikan.</p>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button type="button" id="globalDeleteCancelBtn" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer">
+                    Batal
+                </button>
+                <button type="button" id="globalDeleteSubmitBtn" class="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-600/20 transition cursor-pointer flex items-center gap-2">
+                    <i class="fas fa-trash-alt text-xs"></i> Hapus
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        let targetDeleteForm = null;
+
+        const modal = document.getElementById('globalDeleteConfirmModal');
+        const cancelBtn = document.getElementById('globalDeleteCancelBtn');
+        const submitBtn = document.getElementById('globalDeleteSubmitBtn');
+
+        function openModal(form) {
+            targetDeleteForm = form;
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.style.display = 'flex';
+            }
+        }
+
+        function closeModal() {
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.style.display = 'none';
+            }
+            targetDeleteForm = null;
+        }
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                closeModal();
+            });
+        }
+
+        if (modal) {
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    closeModal();
+                }
+            });
+        }
+
+        if (submitBtn) {
+            submitBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                if (targetDeleteForm) {
+                    const formToSubmit = targetDeleteForm;
+                    closeModal();
+                    formToSubmit.dataset.confirmed = "true";
+                    if (typeof formToSubmit.submit === 'function') {
+                        HTMLFormElement.prototype.submit.call(formToSubmit);
+                    }
+                }
+            });
+        }
+
+        // Global Event Interceptor (Capture Phase)
+        document.addEventListener('submit', function(e) {
+            const form = e.target;
+            if (!form) return;
+
+            if (form.dataset.confirmed === "true") {
+                return;
+            }
+
+            const methodInput = form.querySelector('input[name="_method"]');
+            const methodVal = methodInput ? methodInput.value.toUpperCase() : (form.method ? form.method.toUpperCase() : '');
+            const isDelete = (methodVal === 'DELETE') || form.hasAttribute('data-confirm') || (form.getAttribute('onsubmit') !== null && form.getAttribute('onsubmit').includes('confirm'));
+
+            if (isDelete) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                openModal(form);
+            }
+        }, true);
+    });
     </script>
 </body>
 </html>

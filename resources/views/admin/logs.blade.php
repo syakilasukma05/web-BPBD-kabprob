@@ -167,7 +167,7 @@
                                         class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Lihat Detail Log">
                                     <i class="fas fa-eye"></i>
                                 </button>
-                                <form action="{{ route('admin.logs.destroy', $log->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus entri log ini?')">
+                                <form action="{{ route('admin.logs.destroy', $log->id) }}" method="POST" class="inline" data-confirm="Apakah Anda yakin ingin menghapus entri log ini?">
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit" class="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition" title="Hapus Log">

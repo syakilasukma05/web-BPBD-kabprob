@@ -17,6 +17,7 @@ use App\Models\ContactMessage;
 use App\Models\User;
 use App\Models\ActivityLog;
 use App\Models\MediaItem;
+use App\Models\VisitorStatistic;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -55,11 +56,21 @@ class AdminController extends Controller
     {
         $request->validate(['title' => 'required|string|max:255']);
         
-        $imageUrl = $request->image_url;
+        $imageUrl = null;
         if ($request->hasFile('image_file')) {
             $file = $request->file('image_file');
-            $filename = 'slider_' . time() . '_' . Str::random(5) . '.' . $file->getClientOriginalExtension();
-            $file->move(public_path('uploads/sliders'), $filename);
+            $ext = strtolower($file->getClientOriginalExtension());
+            if (!in_array($ext, ['jpg', 'jpeg', 'png'])) {
+                return back()->withErrors(['image_file' => 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.'])->withInput();
+            }
+            $filename = 'slider_' . time() . '_' . Str::random(5) . '.' . $ext;
+            $destinationDir = public_path('uploads/sliders');
+            if (!file_exists($destinationDir)) {
+                mkdir($destinationDir, 0777, true);
+            }
+            $destination = $destinationDir . '/' . $filename;
+
+            $this->processBannerLandscapeImage($file->getPathname(), $destination);
             $imageUrl = url('uploads/sliders/' . $filename);
         }
 
@@ -67,8 +78,8 @@ class AdminController extends Controller
             'title' => $request->title,
             'subtitle' => $request->subtitle,
             'image_url' => $imageUrl,
-            'button_text' => $request->button_text,
-            'button_url' => $request->button_url,
+            'button_text' => $request->button_text ?? null,
+            'button_url' => $request->button_url ?? null,
             'order' => $request->order ?? 0,
             'is_active' => $request->has('is_active'),
         ]);
@@ -80,11 +91,21 @@ class AdminController extends Controller
         $id = trim(str_replace(['"', "'", '\\'], '', $id));
         $slider = HeroSlider::findOrFail($id);
         
-        $imageUrl = $request->image_url ?: $slider->image_url;
+        $imageUrl = $slider->image_url;
         if ($request->hasFile('image_file')) {
             $file = $request->file('image_file');
-            $filename = 'slider_' . time() . '_' . Str::random(5) . '.' . $file->getClientOriginalExtension();
-            $file->move(public_path('uploads/sliders'), $filename);
+            $ext = strtolower($file->getClientOriginalExtension());
+            if (!in_array($ext, ['jpg', 'jpeg', 'png'])) {
+                return back()->withErrors(['image_file' => 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.'])->withInput();
+            }
+            $filename = 'slider_' . time() . '_' . Str::random(5) . '.' . $ext;
+            $destinationDir = public_path('uploads/sliders');
+            if (!file_exists($destinationDir)) {
+                mkdir($destinationDir, 0777, true);
+            }
+            $destination = $destinationDir . '/' . $filename;
+
+            $this->processBannerLandscapeImage($file->getPathname(), $destination);
             $imageUrl = url('uploads/sliders/' . $filename);
         }
 
@@ -92,12 +113,73 @@ class AdminController extends Controller
             'title' => $request->title,
             'subtitle' => $request->subtitle,
             'image_url' => $imageUrl,
-            'button_text' => $request->button_text,
-            'button_url' => $request->button_url,
+            'button_text' => $request->button_text ?? $slider->button_text,
+            'button_url' => $request->button_url ?? $slider->button_url,
             'order' => $request->order ?? 0,
             'is_active' => $request->has('is_active'),
         ]);
         return back()->with('success', 'Banner Slider berhasil diperbarui!');
+    }
+
+    private function processBannerLandscapeImage($filePath, $destinationPath, $targetWidth = 1920, $targetHeight = 800)
+    {
+        list($srcW, $srcH, $type) = @getimagesize($filePath);
+        if (!$srcW || !$srcH) {
+            @move_uploaded_file($filePath, $destinationPath);
+            return;
+        }
+
+        $srcImg = null;
+        if ($type === IMAGETYPE_JPEG) {
+            $srcImg = @imagecreatefromjpeg($filePath);
+        } elseif ($type === IMAGETYPE_PNG) {
+            $srcImg = @imagecreatefrompng($filePath);
+        }
+
+        if (!$srcImg) {
+            @copy($filePath, $destinationPath);
+            return;
+        }
+
+        $targetRatio = $targetWidth / $targetHeight;
+        $srcRatio = $srcW / $srcH;
+
+        $dstImg = imagecreatetruecolor($targetWidth, $targetHeight);
+
+        if ($type === IMAGETYPE_PNG) {
+            imagealphablending($dstImg, false);
+            imagesavealpha($dstImg, true);
+            $transparent = imagecolorallocatealpha($dstImg, 255, 255, 255, 127);
+            imagefilledrectangle($dstImg, 0, 0, $targetWidth, $targetHeight, $transparent);
+        }
+
+        if ($srcRatio > $targetRatio) {
+            // Landscape photo wider than target ratio
+            $cropH = $srcH;
+            $cropW = (int)($srcH * $targetRatio);
+            $srcX = (int)(($srcW - $cropW) / 2);
+            $srcY = 0;
+        } else {
+            // Portrait or square photo
+            $cropW = $srcW;
+            $cropH = (int)($srcW / $targetRatio);
+            $srcX = 0;
+            // Bias Y crop slightly towards upper-center (20% from top) so main subjects are preserved
+            $srcY = (int)(($srcH - $cropH) * 0.2);
+            if ($srcY < 0) $srcY = 0;
+            if ($srcY + $cropH > $srcH) $srcY = $srcH - $cropH;
+        }
+
+        imagecopyresampled($dstImg, $srcImg, 0, 0, $srcX, $srcY, $targetWidth, $targetHeight, $cropW, $cropH);
+
+        if ($type === IMAGETYPE_PNG) {
+            imagepng($dstImg, $destinationPath, 8);
+        } else {
+            imagejpeg($dstImg, $destinationPath, 90);
+        }
+
+        imagedestroy($srcImg);
+        imagedestroy($dstImg);
     }
 
     public function sliderDestroy($id)
@@ -111,7 +193,7 @@ class AdminController extends Controller
         if (!$menu) return true;
         $url = strtolower(trim($menu->url ?? ''));
         $title = strtoupper(trim($menu->title ?? ''));
-        return in_array($url, ['/login', '/admin', '/dashboard', '/logout']) || in_array($title, ['LOGIN', 'ADMIN', 'DASHBOARD']);
+        return in_array($url, ['/login', '/logout']) || in_array($title, ['LOGIN']);
     }
 
     // --- 4. STRUKTUR NAVIGASI WEBSITE (TREE HIRARKI MENU & SUBMENU) ---
@@ -264,49 +346,58 @@ class AdminController extends Controller
             $menu->documents = [];
             $menu->links = [];
             $menu->is_external = false;
-            $menu->is_editable_page = false;
+            $menu->is_editable_page = true;
 
             $url = trim($menu->url ?? '');
-            
-            // External link check (type === 'external' or http:// or https://)
-            if ($menu->type === 'external' || preg_match('/^https?:\/\//i', $url)) {
+            $title = trim($menu->title ?? '');
+            $titleLower = strtolower($title);
+            $isSpecialInternalPage = Str::contains($titleLower, ['kajian risiko', 'krb', 'rencana penanggulangan', 'rpb', 'peringatan dini', 'ews', 'cuaca', 'bmkg']);
+
+            // External link flag check
+            if (!$isSpecialInternalPage && ($menu->type === 'external' || preg_match('/^https?:\/\//i', $url))) {
                 $menu->is_external = true;
                 $menu->type = 'external';
-                return;
+            } else {
+                $menu->type = 'internal';
+                $menu->is_external = false;
             }
-
-            $menu->type = 'internal';
-
-            // Anchor check
-            if ($url === '#' || empty($url)) {
-                return;
-            }
-
-            // Internal CMS page check
             $menu->is_editable_page = true;
             
-            // Determine slug for finding Page record
-            $slug = null;
-            if (Str::contains($url, '/halaman/')) {
-                $slug = Str::after($url, '/halaman/');
-            } elseif ($url === '/') {
-                $slug = 'home';
-            } else {
-                $slug = Str::slug(ltrim($url, '/'));
-                if (empty($slug)) {
-                    $slug = Str::slug($menu->title);
-                }
+            $titleSlug = Str::slug($title);
+            $cleanTitle = trim(preg_replace('/\s*\(.*?\)\s*/', '', $title));
+            $cleanTitleSlug = Str::slug($cleanTitle);
+            $cleanUrl = ltrim($url, '/');
+            $urlSlug = null;
+            if (Str::startsWith($cleanUrl, 'halaman/')) {
+                $urlSlug = Str::after($cleanUrl, 'halaman/');
+            } elseif (Str::contains($url, '/halaman/')) {
+                $urlSlug = Str::after($url, '/halaman/');
             }
 
-            // Match existing page by slug or title
+            // Search for associated page by title-slug, url-slug, clean title, or keywords
             $page = null;
-            if (isset($pagesMap[$slug])) {
-                $page = $pagesMap[$slug];
+            if ($urlSlug && isset($pagesMap[$urlSlug])) {
+                $page = $pagesMap[$urlSlug];
+            } elseif ($titleSlug && isset($pagesMap[$titleSlug])) {
+                $page = $pagesMap[$titleSlug];
+            } elseif ($cleanTitleSlug && isset($pagesMap[$cleanTitleSlug])) {
+                $page = $pagesMap[$cleanTitleSlug];
             } else {
-                $page = Page::with(['documents', 'links'])->where('slug', $slug)
-                    ->orWhere('slug', 'like', '%' . $slug . '%')
-                    ->orWhere('title', 'like', '%' . $menu->title . '%')
-                    ->first();
+                $page = Page::with(['documents', 'links'])
+                    ->where(function($q) use ($titleSlug, $urlSlug, $title, $cleanTitle, $cleanTitleSlug) {
+                        if ($titleSlug) {
+                            $q->orWhere('slug', $titleSlug)->orWhere('slug', 'like', '%' . $titleSlug . '%');
+                        }
+                        if ($cleanTitleSlug) {
+                            $q->orWhere('slug', $cleanTitleSlug)->orWhere('slug', 'like', '%' . $cleanTitleSlug . '%');
+                        }
+                        if ($urlSlug) {
+                            $q->orWhere('slug', $urlSlug);
+                        }
+                        if ($cleanTitle) {
+                            $q->orWhere('title', 'like', '%' . $cleanTitle . '%');
+                        }
+                    })->first();
             }
 
             // If page exists, attach content & image details & page_id & documents & links
@@ -318,22 +409,6 @@ class AdminController extends Controller
                 $menu->image_size = $page->image_size;
                 $menu->documents = $page->documents;
                 $menu->links = $page->links;
-            } else {
-                // First or create initial page record for seamless editing
-                $newPage = Page::create([
-                    'title' => $menu->title,
-                    'slug' => $slug,
-                    'content' => '',
-                    'is_published' => true
-                ]);
-                $newPage->load(['documents', 'links']);
-                $menu->page_id = $newPage->id;
-                $menu->page_content = $newPage->content;
-                $menu->image_url = $newPage->image_url;
-                $menu->image_name = $newPage->image_name;
-                $menu->image_size = $newPage->image_size;
-                $menu->documents = $newPage->documents;
-                $menu->links = $newPage->links;
             }
         };
 
@@ -363,8 +438,10 @@ class AdminController extends Controller
         $cleaned = $content;
 
         // Clean up any old double-escaped HTML entities (e.g. &lt;p&gt;) from previous corrupt saves
-        if (Str::contains($cleaned, ['&lt;p&gt;', '&lt;h', '&lt;div&gt;', '&lt;ul&gt;', '&lt;table&gt;', '&lt;img', '&lt;strong'])) {
-            $cleaned = htmlspecialchars_decode($cleaned, ENT_QUOTES);
+        while (Str::contains($cleaned, ['&lt;', '&gt;', '&amp;'])) {
+            $decoded = htmlspecialchars_decode($cleaned, ENT_QUOTES);
+            if ($decoded === $cleaned) break;
+            $cleaned = $decoded;
         }
 
         // Regex callback to sanitize all href attributes (tel:, mailto:, http:, https:)
@@ -591,13 +668,19 @@ class AdminController extends Controller
         }
         $rawUrl = trim(str_replace(['"', "'", '\\'], '', $rawUrl ?? ''));
         $url = !empty($rawUrl) ? $rawUrl : $menu->url;
+        $title = trim($request->title ?? $menu->title ?? '');
+        $titleLower = strtolower($title);
+        $isSpecialInternalPage = Str::contains($titleLower, ['kajian risiko', 'krb', 'rencana penanggulangan', 'rpb', 'peringatan dini', 'ews', 'cuaca', 'bmkg']);
+
         $type = $request->type ?? ($menu->type ?? (preg_match('/^https?:\/\//i', $url) ? 'external' : 'internal'));
-        if (preg_match('/^https?:\/\//i', $url)) {
+        if (!$isSpecialInternalPage && (preg_match('/^https?:\/\//i', $url) || $type === 'external')) {
             $type = 'external';
+        } elseif ($isSpecialInternalPage) {
+            $type = 'internal';
         }
 
-        // If menu is external link type, update navigation_menu directly without forcing /halaman/ or creating Page records
-        if ($type === 'external') {
+        // If menu is external link type (submitted from external link form without page_content), update navigation_menu directly
+        if ($type === 'external' && !$request->has('page_content') && !$request->hasFile('document_file')) {
             $isActive = $menu->is_active;
             if ($request->has('is_active')) {
                 $isActive = $request->boolean('is_active');
@@ -627,21 +710,39 @@ class AdminController extends Controller
 
         // Detect existing page slug from current/requested URL or title
         $targetUrl = $url ?: $menu->url;
-        $slug = null;
-        if ($targetUrl && Str::contains($targetUrl, '/halaman/')) {
-            $slug = Str::after($targetUrl, '/halaman/');
+        $cleanTargetUrl = ltrim($targetUrl, '/');
+        $urlSlug = null;
+        if (Str::startsWith($cleanTargetUrl, 'halaman/')) {
+            $urlSlug = Str::after($cleanTargetUrl, 'halaman/');
+        } elseif (Str::contains($targetUrl, '/halaman/')) {
+            $urlSlug = Str::after($targetUrl, '/halaman/');
         }
-        if (!$slug) {
-            $slug = Str::slug($request->title);
-        }
+        $titleSlug = Str::slug($request->title);
 
         // If page_content or image_url or document_file is provided, create/update Page record
-        if ($request->filled('page_content') || !empty($imageUrl) || $request->hasFile('document_file')) {
-            $formattedContent = $this->formatPageContent($request->page_content);
+        if ($request->has('page_content') || !empty($imageUrl) || $request->hasFile('document_file')) {
+            $incomingContent = $request->input('page_content');
+            $formattedContent = !is_null($incomingContent) ? $this->formatPageContent($incomingContent) : null;
+
+            // Find existing page by urlSlug, titleSlug, or title
+            $page = Page::where(function($q) use ($titleSlug, $urlSlug, $request, $menu) {
+                if ($urlSlug) {
+                    $q->orWhere('slug', $urlSlug);
+                }
+                if ($titleSlug) {
+                    $q->orWhere('slug', $titleSlug);
+                }
+                $q->orWhere('title', $request->title)->orWhere('title', $menu->title);
+            })->first();
 
             $pageData = ['title' => $request->title];
-            if ($request->filled('page_content')) {
-                $pageData['content'] = $formattedContent;
+            if ($request->has('page_content')) {
+                // If incoming content is empty, but page already has content in DB, keep existing content!
+                if ($page && !empty($page->content) && empty(trim(strip_tags($formattedContent ?? ''))) && !str_contains($formattedContent ?? '', '<img') && !str_contains($formattedContent ?? '', '<iframe')) {
+                    $pageData['content'] = $page->content;
+                } else {
+                    $pageData['content'] = $formattedContent;
+                }
             }
             if ($imageData) {
                 $pageData = array_merge($pageData, $imageData);
@@ -649,16 +750,10 @@ class AdminController extends Controller
                 $pageData['image_url'] = $imageUrl;
             }
 
-            // Find existing page by slug
-            $page = Page::where('slug', $slug)->first();
-            if (!$page) {
-                $page = Page::where('slug', Str::slug($request->title))->first();
-            }
-
             if ($page) {
                 $page->update($pageData);
             } else {
-                $pageData['slug'] = $slug;
+                $pageData['slug'] = $urlSlug ?: $titleSlug;
                 $page = Page::create($pageData);
             }
 
@@ -670,17 +765,29 @@ class AdminController extends Controller
 
 
 
-        if (empty($url)) {
-            $url = '#';
+        // Preserve existing navigation structure fields (parent_id, order, target, is_active) so saving content never breaks navigation hierarchy
+        $parentId = $menu->parent_id;
+        if ($request->has('parent_id') && !is_null($request->parent_id) && $request->parent_id !== '') {
+            $parentId = $request->parent_id;
+        }
+
+        $order = $request->has('order') ? $request->order : $menu->order;
+        $target = $request->has('target') ? $request->target : $menu->target;
+
+        $isActive = $menu->is_active;
+        if ($request->has('is_active')) {
+            $isActive = $request->boolean('is_active');
+        } elseif ($request->has('status')) {
+            $isActive = ($request->status === 'aktif' || $request->status == '1');
         }
 
         $menu->update([
-            'title' => $request->title,
+            'title' => $request->title ?? $menu->title,
             'url' => $url,
-            'parent_id' => $request->parent_id ?: null,
-            'order' => $request->order ?? 0,
-            'target' => $request->target ?? '_self',
-            'is_active' => $request->has('is_active'),
+            'parent_id' => $parentId,
+            'order' => $order,
+            'target' => $target,
+            'is_active' => $isActive,
         ]);
         return back()->with('success', 'Menu Navigasi & Konten Halaman berhasil diperbarui!');
     }
@@ -692,22 +799,48 @@ class AdminController extends Controller
     }
 
     // --- 3. NEWS & INFORMASI CRUD ---
-    public function news()
+    public function news(Request $request)
     {
-        $newsList = NewsItem::orderBy('published_at', 'desc')->paginate(10);
-        return view('admin.news', compact('newsList'));
+        $query = NewsItem::query();
+
+        if ($request->has('status') && in_array($request->status, ['aktif', 'nonaktif'])) {
+            $query->where('status', $request->status);
+        }
+
+        $newsList = $query->orderBy('order', 'asc')->orderBy('published_at', 'desc')->paginate(10)->appends($request->query());
+        $defaultCategories = ['Peringatan Dini', 'Tanggap Darurat', 'Mitigasi Bencana', 'Kegiatan Posko'];
+        $dbCategories = NewsItem::distinct()->pluck('category')->filter()->toArray();
+        $categories = array_values(array_unique(array_merge($defaultCategories, $dbCategories)));
+        $currentStatus = $request->status ?? 'semua';
+        $maxOrder = (int) NewsItem::max('order');
+        $nextOrder = $maxOrder > 0 ? $maxOrder + 1 : 1;
+
+        return view('admin.news', compact('newsList', 'categories', 'currentStatus', 'nextOrder'));
     }
 
     public function newsStore(Request $request)
     {
         $request->validate(['title' => 'required|string|max:255']);
         
-        $imageUrl = $request->image_url;
+        $imageUrl = null;
         if ($request->hasFile('image_file')) {
             $file = $request->file('image_file');
-            $filename = 'news_' . time() . '_' . Str::random(5) . '.' . $file->getClientOriginalExtension();
+            $ext = strtolower($file->getClientOriginalExtension());
+            $mime = strtolower($file->getClientMimeType());
+            $allowedExts = ['jpg', 'jpeg', 'png'];
+            $allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/pjpeg', 'image/x-png'];
+
+            if (!in_array($ext, $allowedExts) || !in_array($mime, $allowedMimes)) {
+                return back()->withErrors(['image_file' => 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.'])->withInput();
+            }
+            $filename = 'news_' . time() . '_' . Str::random(5) . '.' . $ext;
             $file->move(public_path('uploads/news'), $filename);
             $imageUrl = url('uploads/news/' . $filename);
+        }
+
+        $category = !empty($request->custom_category) ? trim($request->custom_category) : ($request->category ?? 'Peringatan Dini');
+        if (empty($category) || $category === '__custom__') {
+            $category = 'Peringatan Dini';
         }
 
         $formattedContent = $this->formatPageContent($request->content);
@@ -719,7 +852,9 @@ class AdminController extends Controller
             'content' => $formattedContent,
             'image_url' => $imageUrl,
             'link_url' => $request->link_url,
-            'category' => $request->category ?? 'Peringatan Dini',
+            'category' => $category,
+            'status' => $request->status ?? 'aktif',
+            'order' => (int) ($request->order ?? 1),
             'published_at' => $request->published_at ?? now(),
         ]);
 
@@ -733,12 +868,25 @@ class AdminController extends Controller
         $id = trim(str_replace(['"', "'", '\\'], '', $id));
         $news = NewsItem::findOrFail($id);
         
-        $imageUrl = $request->image_url ?: $news->image_url;
+        $imageUrl = $news->image_url;
         if ($request->hasFile('image_file')) {
             $file = $request->file('image_file');
-            $filename = 'news_' . time() . '_' . Str::random(5) . '.' . $file->getClientOriginalExtension();
+            $ext = strtolower($file->getClientOriginalExtension());
+            $mime = strtolower($file->getClientMimeType());
+            $allowedExts = ['jpg', 'jpeg', 'png'];
+            $allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/pjpeg', 'image/x-png'];
+
+            if (!in_array($ext, $allowedExts) || !in_array($mime, $allowedMimes)) {
+                return back()->withErrors(['image_file' => 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.'])->withInput();
+            }
+            $filename = 'news_' . time() . '_' . Str::random(5) . '.' . $ext;
             $file->move(public_path('uploads/news'), $filename);
             $imageUrl = url('uploads/news/' . $filename);
+        }
+
+        $category = !empty($request->custom_category) ? trim($request->custom_category) : ($request->category ?? $news->category);
+        if (empty($category) || $category === '__custom__') {
+            $category = $news->category ?? 'Peringatan Dini';
         }
 
         $formattedContent = $this->formatPageContent($request->content);
@@ -749,7 +897,9 @@ class AdminController extends Controller
             'content' => $formattedContent,
             'image_url' => $imageUrl,
             'link_url' => $request->link_url,
-            'category' => $request->category,
+            'category' => $category,
+            'status' => $request->status ?? ($news->status ?? 'aktif'),
+            'order' => (int) ($request->order ?? $news->order ?? 1),
             'published_at' => $request->published_at,
         ]);
 
@@ -861,7 +1011,7 @@ class AdminController extends Controller
     // --- 5. PAGES & PAGE DOCUMENTS CRUD ---
     public function pages()
     {
-        $pages = Page::with('documents')->orderBy('updated_at', 'desc')->get();
+        $pages = Page::with(['documents', 'links'])->orderBy('updated_at', 'desc')->get();
         return view('admin.pages', compact('pages'));
     }
 
@@ -1058,11 +1208,19 @@ class AdminController extends Controller
     {
         $request->validate(['title' => 'required|string|max:255']);
         
-        $imageUrl = $request->image_url;
+        $imageUrl = null;
         if ($request->hasFile('image_file')) {
             $file = $request->file('image_file');
-            $filename = 'widget_' . time() . '_' . Str::random(5) . '.' . $file->getClientOriginalExtension();
-            $file->move(public_path('uploads/widgets'), $filename);
+            $ext = strtolower($file->getClientOriginalExtension());
+            if (!in_array($ext, ['jpg', 'jpeg', 'png'])) {
+                return back()->withErrors(['image_file' => 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.'])->withInput();
+            }
+            $filename = 'widget_' . time() . '_' . Str::random(5) . '.' . $ext;
+            $destinationDir = public_path('uploads/widgets');
+            if (!file_exists($destinationDir)) {
+                mkdir($destinationDir, 0777, true);
+            }
+            $file->move($destinationDir, $filename);
             $imageUrl = url('uploads/widgets/' . $filename);
         }
 
@@ -1073,19 +1231,29 @@ class AdminController extends Controller
             'order' => $request->order ?? 0,
             'is_active' => $request->has('is_active'),
         ]);
-        return back()->with('success', 'Widget Sidebar berhasil ditambahkan!');
+        return redirect()->route('admin.widgets')->with('success', 'Widget Sidebar berhasil ditambahkan!');
     }
 
     public function widgetUpdate(Request $request, $id)
     {
-        $id = trim(str_replace(['"', "'", '\\'], '', $id));
+        $id = $this->sanitizeId($id);
         $widget = SidebarWidget::findOrFail($id);
         
-        $imageUrl = $request->image_url ?: $widget->image_url;
+        $request->validate(['title' => 'required|string|max:255']);
+
+        $imageUrl = $widget->image_url;
         if ($request->hasFile('image_file')) {
             $file = $request->file('image_file');
-            $filename = 'widget_' . time() . '_' . Str::random(5) . '.' . $file->getClientOriginalExtension();
-            $file->move(public_path('uploads/widgets'), $filename);
+            $ext = strtolower($file->getClientOriginalExtension());
+            if (!in_array($ext, ['jpg', 'jpeg', 'png'])) {
+                return back()->withErrors(['image_file' => 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.'])->withInput();
+            }
+            $filename = 'widget_' . time() . '_' . Str::random(5) . '.' . $ext;
+            $destinationDir = public_path('uploads/widgets');
+            if (!file_exists($destinationDir)) {
+                mkdir($destinationDir, 0777, true);
+            }
+            $file->move($destinationDir, $filename);
             $imageUrl = url('uploads/widgets/' . $filename);
         }
 
@@ -1096,7 +1264,7 @@ class AdminController extends Controller
             'order' => $request->order ?? 0,
             'is_active' => $request->has('is_active'),
         ]);
-        return back()->with('success', 'Widget Sidebar berhasil diperbarui!');
+        return redirect()->route('admin.widgets')->with('success', 'Widget Sidebar berhasil diperbarui!');
     }
 
     public function widgetDestroy($id)
@@ -1116,10 +1284,14 @@ class AdminController extends Controller
     {
         $request->validate(['title' => 'required|string|max:255']);
         
-        $imageUrl = $request->image_url;
+        $imageUrl = null;
         if ($request->hasFile('image_file')) {
             $file = $request->file('image_file');
-            $filename = 'link_' . time() . '_' . Str::random(5) . '.' . $file->getClientOriginalExtension();
+            $ext = strtolower($file->getClientOriginalExtension());
+            if (!in_array($ext, ['jpg', 'jpeg', 'png'])) {
+                return back()->withErrors(['image_file' => 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.'])->withInput();
+            }
+            $filename = 'link_' . time() . '_' . Str::random(5) . '.' . $ext;
             $file->move(public_path('uploads/links'), $filename);
             $imageUrl = url('uploads/links/' . $filename);
         }
@@ -1139,10 +1311,14 @@ class AdminController extends Controller
         $id = trim(str_replace(['"', "'", '\\'], '', $id));
         $link = RelatedLink::findOrFail($id);
         
-        $imageUrl = $request->image_url ?: $link->image_url;
+        $imageUrl = $link->image_url;
         if ($request->hasFile('image_file')) {
             $file = $request->file('image_file');
-            $filename = 'link_' . time() . '_' . Str::random(5) . '.' . $file->getClientOriginalExtension();
+            $ext = strtolower($file->getClientOriginalExtension());
+            if (!in_array($ext, ['jpg', 'jpeg', 'png'])) {
+                return back()->withErrors(['image_file' => 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.'])->withInput();
+            }
+            $filename = 'link_' . time() . '_' . Str::random(5) . '.' . $ext;
             $file->move(public_path('uploads/links'), $filename);
             $imageUrl = url('uploads/links/' . $filename);
         }
@@ -1180,7 +1356,12 @@ class AdminController extends Controller
             'total_video' => MediaItem::where('type', 'video')->count(),
         ];
 
-        return view('admin.media', compact('mediaItems', 'stats', 'type'));
+        $categories = MediaItem::distinct()->whereNotNull('category')->pluck('category')->toArray();
+        if (empty($categories)) {
+            $categories = ['Kegiatan BPBD', 'Evakuasi Bencana', 'Edukasi & Mitigasi', 'Simulasi Kebencanaan'];
+        }
+
+        return view('admin.media', compact('mediaItems', 'stats', 'type', 'categories'));
     }
 
     public function mediaStore(Request $request)
@@ -1190,12 +1371,43 @@ class AdminController extends Controller
             'type' => 'required|in:foto,video',
         ]);
 
-        $fileUrl = $request->file_url;
-        if ($request->hasFile('media_file')) {
-            $file = $request->file('media_file');
-            $filename = 'media_' . time() . '_' . Str::random(5) . '.' . $file->getClientOriginalExtension();
-            $file->move(public_path('uploads/media'), $filename);
-            $fileUrl = url('uploads/media/' . $filename);
+        $fileUrl = null;
+        $photos = [];
+
+        if ($request->type === 'foto') {
+            if ($request->hasFile('media_files')) {
+                $files = $request->file('media_files');
+                if (!is_array($files)) {
+                    $files = [$files];
+                }
+
+                foreach ($files as $file) {
+                    $ext = strtolower($file->getClientOriginalExtension());
+                    if (!in_array($ext, ['jpg', 'jpeg', 'png'])) {
+                        return back()->withErrors(['media_files' => 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.'])->withInput();
+                    }
+                }
+
+                foreach ($files as $file) {
+                    $ext = strtolower($file->getClientOriginalExtension());
+                    $filename = 'media_' . time() . '_' . Str::random(5) . '.' . $ext;
+                    $file->move(public_path('uploads/media'), $filename);
+                    $photos[] = url('uploads/media/' . $filename);
+                }
+            } elseif ($request->hasFile('media_file')) {
+                $file = $request->file('media_file');
+                $ext = strtolower($file->getClientOriginalExtension());
+                if (!in_array($ext, ['jpg', 'jpeg', 'png'])) {
+                    return back()->withErrors(['media_files' => 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.'])->withInput();
+                }
+                $filename = 'media_' . time() . '_' . Str::random(5) . '.' . $ext;
+                $file->move(public_path('uploads/media'), $filename);
+                $photos[] = url('uploads/media/' . $filename);
+            }
+
+            if (!empty($photos)) {
+                $fileUrl = $photos[0];
+            }
         }
 
         $item = MediaItem::create([
@@ -1203,45 +1415,86 @@ class AdminController extends Controller
             'type' => $request->type,
             'caption' => $request->caption,
             'file_url' => $fileUrl,
+            'photos' => !empty($photos) ? $photos : null,
             'video_url' => $request->video_url,
-            'category' => $request->category ?? 'Kegiatan BPBD',
-            'order' => $request->order ?? 0,
+            'category' => $request->category ?: 'Kegiatan BPBD',
+            'order' => (int) ($request->order ?? 0),
             'is_active' => $request->has('is_active'),
         ]);
 
         ActivityLog::record('Tambah Galeri Media', "Menambahkan item media '{$item->title}' (Tipe: {$item->type}).");
 
-        return back()->with('success', 'Item Media baru berhasil ditambahkan!');
+        return back()->with('success', 'Album / Item Media baru berhasil ditambahkan!');
     }
 
     public function mediaUpdate(Request $request, $id)
     {
-        $id = trim(str_replace(['"', "'", '\\'], '', $id));
+        $id = $this->sanitizeId($id);
         $media = MediaItem::findOrFail($id);
         $request->validate(['title' => 'required|string|max:255']);
 
-        $fileUrl = $request->file_url ?: $media->file_url;
-        if ($request->hasFile('media_file')) {
-            $file = $request->file('media_file');
-            $filename = 'media_' . time() . '_' . Str::random(5) . '.' . $file->getClientOriginalExtension();
-            $file->move(public_path('uploads/media'), $filename);
-            $fileUrl = url('uploads/media/' . $filename);
+        $photos = $media->photos ?: [];
+        if (is_string($photos)) {
+            $decoded = json_decode($photos, true);
+            $photos = is_array($decoded) ? $decoded : [$photos];
         }
+        if (!is_array($photos) && !empty($media->file_url)) {
+            $photos = [$media->file_url];
+        }
+        $photos = array_values(array_filter((array) $photos));
+
+        if ($request->type === 'foto') {
+            if ($request->hasFile('media_files')) {
+                $files = $request->file('media_files');
+                if (!is_array($files)) {
+                    $files = [$files];
+                }
+
+                foreach ($files as $file) {
+                    $ext = strtolower($file->getClientOriginalExtension());
+                    if (!in_array($ext, ['jpg', 'jpeg', 'png'])) {
+                        return back()->withErrors(['media_files' => 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.'])->withInput();
+                    }
+                }
+
+                $newPhotos = [];
+                foreach ($files as $file) {
+                    $ext = strtolower($file->getClientOriginalExtension());
+                    $filename = 'media_' . time() . '_' . Str::random(5) . '.' . $ext;
+                    $file->move(public_path('uploads/media'), $filename);
+                    $newPhotos[] = url('uploads/media/' . $filename);
+                }
+                $photos = $newPhotos;
+            } elseif ($request->hasFile('media_file')) {
+                $file = $request->file('media_file');
+                $ext = strtolower($file->getClientOriginalExtension());
+                if (!in_array($ext, ['jpg', 'jpeg', 'png'])) {
+                    return back()->withErrors(['media_files' => 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.'])->withInput();
+                }
+                $filename = 'media_' . time() . '_' . Str::random(5) . '.' . $ext;
+                $file->move(public_path('uploads/media'), $filename);
+                $photos = [url('uploads/media/' . $filename)];
+            }
+        }
+
+        $fileUrl = !empty($photos[0]) ? $photos[0] : $media->file_url;
+        $formattedCaption = $request->caption ? $this->formatPageContent($request->caption) : null;
 
         $media->update([
             'title' => $request->title,
             'type' => $request->type ?? $media->type,
-            'caption' => $request->caption,
+            'caption' => $formattedCaption,
             'file_url' => $fileUrl,
+            'photos' => !empty($photos) ? array_values($photos) : null,
             'video_url' => $request->video_url,
-            'category' => $request->category ?? $media->category,
-            'order' => $request->order ?? 0,
+            'category' => $request->category ?: ($media->category ?: 'Kegiatan BPBD'),
+            'order' => (int) ($request->order ?? $media->order ?? 0),
             'is_active' => $request->has('is_active'),
         ]);
 
         ActivityLog::record('Update Galeri Media', "Memperbarui data media '{$media->title}'.");
 
-        return back()->with('success', 'Item Media berhasil diperbarui!');
+        return redirect()->route('admin.media', ['type' => $media->type])->with('success', 'Item Media berhasil diperbarui!');
     }
 
     public function mediaDestroy($id)
@@ -1363,17 +1616,19 @@ class AdminController extends Controller
             'logo_frontend_file' => 'logo_frontend',
             'logo_backend_file' => 'logo_backend',
             'logo_berakhlak_file' => 'logo_berakhlak',
+            'top_header_banner_file' => 'top_header_banner',
         ];
-
-        $uploadedKeys = [];
 
         foreach ($fileKeys as $fileInput => $settingKey) {
             if ($request->hasFile($fileInput)) {
                 $file = $request->file($fileInput);
-                $filename = $settingKey . '_' . time() . '_' . Str::random(4) . '.' . $file->getClientOriginalExtension();
+                $ext = strtolower($file->getClientOriginalExtension());
+                if (!in_array($ext, ['jpg', 'jpeg', 'png'])) {
+                    return back()->withErrors([$fileInput => 'Format file tidak didukung. Silakan upload gambar JPG atau PNG.'])->withInput();
+                }
+                $filename = $settingKey . '_' . time() . '_' . Str::random(4) . '.' . $ext;
                 $file->move(public_path('uploads/settings'), $filename);
                 SiteSetting::set($settingKey, url('uploads/settings/' . $filename));
-                $uploadedKeys[] = $settingKey;
             }
         }
 
@@ -1547,7 +1802,11 @@ class AdminController extends Controller
         $id = $this->sanitizeId($id);
         $newsItem = NewsItem::findOrFail($id);
         $newsList = NewsItem::latest()->paginate(10);
-        return view('admin.news', compact('newsList', 'newsItem'));
+        $defaultCategories = ['Peringatan Dini', 'Tanggap Darurat', 'Mitigasi Bencana', 'Kegiatan Posko'];
+        $dbCategories = NewsItem::distinct()->pluck('category')->filter()->toArray();
+        $categories = array_values(array_unique(array_merge($defaultCategories, $dbCategories)));
+
+        return view('admin.news', compact('newsList', 'newsItem', 'categories'));
     }
 
     public function sliderEdit($id)
@@ -1576,44 +1835,54 @@ class AdminController extends Controller
             $menu->is_editable_page = false;
 
             $url = trim($menu->url ?? '');
-            
-            // External link check
-            if ($menu->type === 'external' || $menu->type === 'external_link' || preg_match('/^https?:\/\//i', $url)) {
+            $title = trim($menu->title ?? '');
+            $titleLower = strtolower($title);
+            $isSpecialInternalPage = Str::contains($titleLower, ['kajian risiko', 'krb', 'rencana penanggulangan', 'rpb', 'peringatan dini', 'ews', 'cuaca', 'bmkg']);
+
+            if (!$isSpecialInternalPage && ($menu->type === 'external' || $menu->type === 'external_link' || preg_match('/^https?:\/\//i', $url))) {
                 $menu->is_external = true;
                 $menu->type = 'external';
-                return;
+            } else {
+                $menu->type = 'internal';
+                $menu->is_external = false;
             }
-
-            $menu->type = 'internal';
-
-            // Anchor check
-            if ($url === '#' || empty($url)) {
-                return;
-            }
-
-            // Internal CMS page check
             $menu->is_editable_page = true;
             
-            $slug = null;
-            if (Str::contains($url, '/halaman/')) {
-                $slug = Str::after($url, '/halaman/');
-            } elseif ($url === '/') {
-                $slug = 'home';
-            } else {
-                $slug = Str::slug(ltrim($url, '/'));
-                if (empty($slug)) {
-                    $slug = Str::slug($menu->title);
-                }
+            $titleSlug = Str::slug($title);
+            $cleanTitle = trim(preg_replace('/\s*\(.*?\)\s*/', '', $title));
+            $cleanTitleSlug = Str::slug($cleanTitle);
+            $cleanUrl = ltrim($url, '/');
+            $urlSlug = null;
+            if (Str::startsWith($cleanUrl, 'halaman/')) {
+                $urlSlug = Str::after($cleanUrl, 'halaman/');
+            } elseif (Str::contains($url, '/halaman/')) {
+                $urlSlug = Str::after($url, '/halaman/');
             }
 
+            // Search for associated page by title-slug, url-slug, clean title, or keywords
             $page = null;
-            if (isset($pagesMap[$slug])) {
-                $page = $pagesMap[$slug];
+            if ($urlSlug && isset($pagesMap[$urlSlug])) {
+                $page = $pagesMap[$urlSlug];
+            } elseif ($titleSlug && isset($pagesMap[$titleSlug])) {
+                $page = $pagesMap[$titleSlug];
+            } elseif ($cleanTitleSlug && isset($pagesMap[$cleanTitleSlug])) {
+                $page = $pagesMap[$cleanTitleSlug];
             } else {
-                $page = Page::with(['documents', 'links'])->where('slug', $slug)
-                    ->orWhere('slug', 'like', '%' . $slug . '%')
-                    ->orWhere('title', 'like', '%' . $menu->title . '%')
-                    ->first();
+                $page = Page::with(['documents', 'links'])
+                    ->where(function($q) use ($titleSlug, $urlSlug, $title, $cleanTitle, $cleanTitleSlug) {
+                        if ($titleSlug) {
+                            $q->orWhere('slug', $titleSlug)->orWhere('slug', 'like', '%' . $titleSlug . '%');
+                        }
+                        if ($cleanTitleSlug) {
+                            $q->orWhere('slug', $cleanTitleSlug)->orWhere('slug', 'like', '%' . $cleanTitleSlug . '%');
+                        }
+                        if ($urlSlug) {
+                            $q->orWhere('slug', $urlSlug);
+                        }
+                        if ($cleanTitle) {
+                            $q->orWhere('title', 'like', '%' . $cleanTitle . '%');
+                        }
+                    })->first();
             }
 
             if ($page) {
@@ -1693,7 +1962,12 @@ class AdminController extends Controller
             'total_video' => MediaItem::where('type', 'video')->count(),
         ];
 
-        return view('admin.media', compact('mediaItems', 'stats', 'type', 'mediaItem'));
+        $categories = MediaItem::distinct()->whereNotNull('category')->pluck('category')->toArray();
+        if (empty($categories)) {
+            $categories = ['Kegiatan BPBD', 'Evakuasi Bencana', 'Edukasi & Mitigasi', 'Simulasi Kebencanaan'];
+        }
+
+        return view('admin.media', compact('mediaItems', 'stats', 'type', 'categories', 'mediaItem'));
     }
 
     public function userEdit($id)
@@ -1703,4 +1977,87 @@ class AdminController extends Controller
         $users = User::latest()->get();
         return view('admin.users', compact('users', 'userItem'));
     }
+
+    public function visitorStats()
+    {
+        $settings = SiteSetting::pluck('value', 'key')->toArray();
+
+        $stats = [
+            'visit_today' => $settings['visit_today'] ?? 124,
+            'visit_month' => $settings['visit_month'] ?? 2840,
+            'visit_year'  => $settings['visit_year'] ?? 34510,
+            'hits_today'  => $settings['hits_today'] ?? 380,
+            'hits_month'  => $settings['hits_month'] ?? 8920,
+        ];
+
+        return view('admin.visitor_stats', compact('stats'));
+    }
+
+    public function visitorStatStore(Request $request)
+    {
+        $request->validate([
+            'visit_today' => 'required|numeric|min:0',
+            'visit_month' => 'required|numeric|min:0',
+            'visit_year'  => 'required|numeric|min:0',
+            'hits_today'  => 'required|numeric|min:0',
+            'hits_month'  => 'required|numeric|min:0',
+        ]);
+
+        SiteSetting::set('visit_today', (int) $request->visit_today);
+        SiteSetting::set('visit_month', (int) $request->visit_month);
+        SiteSetting::set('visit_year', (int) $request->visit_year);
+        SiteSetting::set('hits_today', (int) $request->hits_today);
+        SiteSetting::set('hits_month', (int) $request->hits_month);
+
+        return redirect()->route('admin.visitor_stats')->with('success', 'Data Statistik Pengunjung berhasil diperbarui dan tersimpan!');
+    }
+
+    public function visitorStatEdit($id)
+    {
+        return $this->visitorStats();
+    }
+
+    public function visitorStatUpdate(Request $request, $id = null)
+    {
+        return $this->visitorStatStore($request);
+    }
+
+    public function visitorStatDestroy($id)
+    {
+        return redirect()->route('admin.visitor_stats')->with('success', 'Data statistik pengunjung berhasil diperbarui.');
+    }
+
+    // --- 11. PERINGATAN AKTIF (EMERGENCY ALERT MANAGEMENT) ---
+    public function activeAlertEdit()
+    {
+        $status = SiteSetting::get('active_alert_status', 'aktif');
+        $title = SiteSetting::get('active_alert_title', 'PERINGATAN AKTIF');
+        $message = SiteSetting::get('active_alert_message', '');
+        $link = SiteSetting::get('active_alert_link', '');
+
+        return view('admin.active_alert', compact('status', 'title', 'message', 'link'));
+    }
+
+    public function activeAlertUpdate(Request $request)
+    {
+        $request->validate([
+            'status' => 'required|in:aktif,nonaktif',
+            'title' => 'required|string|max:100',
+            'link' => 'nullable|string|max:500',
+            'message' => 'nullable|string',
+        ]);
+
+        SiteSetting::set('active_alert_status', $request->status);
+        SiteSetting::set('active_alert_title', $request->title);
+        SiteSetting::set('active_alert_message', $request->message ?? '');
+        SiteSetting::set('active_alert_link', $request->link ?? '');
+
+        ActivityLog::record(
+            'Update Peringatan Aktif',
+            'Memperbarui pengaturan peringatan aktif: ' . $request->title . ' (Status: ' . $request->status . ')'
+        );
+
+        return redirect()->route('admin.active_alert')->with('success', 'Konten dan status Peringatan Aktif berhasil disimpan!');
+    }
 }
+
