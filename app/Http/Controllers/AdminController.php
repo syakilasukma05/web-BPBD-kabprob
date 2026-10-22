@@ -71,7 +71,7 @@ class AdminController extends Controller
             $destination = $destinationDir . '/' . $filename;
 
             $this->processBannerLandscapeImage($file->getPathname(), $destination);
-            $imageUrl = url('uploads/sliders/' . $filename);
+            $imageUrl = '/uploads/sliders/' . $filename;
         }
 
         HeroSlider::create([
@@ -106,7 +106,15 @@ class AdminController extends Controller
             $destination = $destinationDir . '/' . $filename;
 
             $this->processBannerLandscapeImage($file->getPathname(), $destination);
-            $imageUrl = url('uploads/sliders/' . $filename);
+            $imageUrl = '/uploads/sliders/' . $filename;
+
+            // Hapus file lama jika ada dan tersimpan di uploads/sliders
+            if ($slider->image_url && str_contains($slider->image_url, '/uploads/sliders/')) {
+                $oldFile = public_path(ltrim(parse_url($slider->image_url, PHP_URL_PATH), '/'));
+                if (file_exists($oldFile) && $oldFile !== $destination) {
+                    @unlink($oldFile);
+                }
+            }
         }
 
         $slider->update([
@@ -184,7 +192,15 @@ class AdminController extends Controller
 
     public function sliderDestroy($id)
     {
-        HeroSlider::findOrFail($id)->delete();
+        $id = trim(str_replace(['"', "'", '\\'], '', $id));
+        $slider = HeroSlider::findOrFail($id);
+        if ($slider->image_url && str_contains($slider->image_url, '/uploads/sliders/')) {
+            $filePath = public_path(ltrim(parse_url($slider->image_url, PHP_URL_PATH), '/'));
+            if (file_exists($filePath)) {
+                @unlink($filePath);
+            }
+        }
+        $slider->delete();
         return back()->with('success', 'Banner Slider berhasil dihapus!');
     }
 

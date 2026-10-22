@@ -88,7 +88,7 @@
                     <tr class="hover:bg-slate-50/80 transition-colors">
                         <td class="px-6 py-4 font-extrabold text-slate-800">#{{ $slider->order }}</td>
                         <td class="px-6 py-4">
-                            <img src="{{ $slider->image_url }}" alt="Preview" class="h-14 w-28 object-cover rounded-lg border border-slate-200 shadow-xs">
+                            <img src="{{ asset($slider->image_url) }}" alt="Preview" class="h-14 w-28 object-cover rounded-lg border border-slate-200 shadow-xs">
                         </td>
                         <td class="px-6 py-4 max-w-xs">
                             <h4 class="font-bold text-slate-800 text-xs">{{ $slider->title }}</h4>
@@ -202,7 +202,7 @@
                         <div class="mt-3" x-show="imagePreview || currentSlider.image_url" x-cloak>
                             <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Preview Tampilan Banner:</span>
                             <div class="relative w-full h-36 bg-slate-900 rounded-xl overflow-hidden border border-slate-300 flex items-center justify-center">
-                                <img :src="imagePreview || currentSlider.image_url" 
+                                <img :src="imagePreview || (currentSlider.image_url ? (currentSlider.image_url.startsWith('http') ? currentSlider.image_url : ('{{ asset('') }}' + currentSlider.image_url.replace(/^\/+/, ''))) : '')" 
                                      alt="Preview Banner" 
                                      class="w-full h-full object-cover">
                                 <div class="absolute inset-0 bg-black/40 flex flex-col justify-end p-4 text-white">

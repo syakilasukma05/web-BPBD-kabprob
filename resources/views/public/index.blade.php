@@ -328,7 +328,7 @@
                     
                     <!-- Background Image with Dark Orange Overlay -->
                     <div class="absolute inset-0 bg-cover bg-center bg-no-repeat transform transition-transform duration-10000"
-                         style="background-image: url('{{ $slide->image_url }}');">
+                         style="background-image: url('{{ asset($slide->image_url) }}');">
                         <div class="absolute inset-0 bg-gradient-to-r from-slate-950/95 via-slate-900/80 to-orange-950/40"></div>
                     </div>
 
